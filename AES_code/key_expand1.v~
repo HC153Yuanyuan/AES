@@ -1,0 +1,414 @@
+`timescale 1ns/1ps
+
+module	key_expand(
+	input				clk,
+	input				rst_n,
+	input				key_en,
+	//input				nround,
+	input		[127:0]	key_in,
+	output		[127:0]	key1_out,
+	output		[127:0]	key2_out,
+	output		[127:0]	key3_out,
+	output		[127:0]	key4_out,
+	output		[127:0]	key5_out,
+	output		[127:0]	key6_out,
+	output		[127:0]	key7_out,
+	output		[127:0]	key8_out,
+	output		[127:0]	key9_out,
+	output		[127:0]	key10_out,
+	output				round_en	
+);
+
+
+reg [31:0]	w[0:43];
+wire [31:0]	T_w3;
+wire [31:0]	T_w7;
+wire [31:0]	T_w11;
+wire [31:0]	T_w15;
+wire [31:0]	T_w19;
+wire [31:0]	T_w23;
+wire [31:0]	T_w27;
+wire [31:0]	T_w31;
+wire [31:0]	T_w35;
+wire [31:0]	T_w39;
+
+/*
+always @(posedge clk)
+begin
+	if(!rst_n)
+		begin
+			 w[0]	<=	32'b0;		w[1]	<=	32'b0;		w[2]	<=	32'b0;		w[3]	<=	32'b0; */				
+/*		end
+	else
+		begin
+			w[0]	<=	w[0];		w[1]	<=	w[1];		w[2]	<=	w[2];		w[3]	<=	w[3];
+		end		
+end
+ */	
+always @(posedge clk)
+	begin
+		if(key_en)
+			begin
+				w[0]	<=	key_in[127:96];		w[1]	<=	key_in[95:64];		w[2]	<=	key_in[63:32];		w[3]	<=	key_in[31:0];				
+			end
+		else
+			begin
+				w[0]	<=	w[0];		w[1]	<=	w[1];		w[2]	<=	w[2];		w[3]	<=	w[3];
+			end
+	end
+	
+	RconKey_pipline	Tfun1(						//可以在该模块中加入计数，用来产生本模块的结束
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[3]		), 
+		.Rcon		(8'h01		),
+		.Rkey_out	(T_w3		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[4]	<=	32'b0;		w[5]	<=	32'b0;		w[6]	<=	32'b0;		w[7]	<=	32'b0;	 */			
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[4]	<=	w[0]	^	T_w3;		w[5]	<=	w[1]	^	w[4];		w[6]	<=	w[2]	^	w[5];	w[7]	<=	w[3]	^	w[6];
+					end
+				else
+					begin
+						w[4]	<=	w[4];	w[5]	<=	w[5];	w[6]	<=	w[6];	w[7]	<=	w[7];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun2(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[7]		), 
+		.Rcon		(8'h02		),
+		.Rkey_out	(T_w7		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[8]	<=	32'b0;		w[9]	<=	32'b0;		w[10]	<=	32'b0;		w[11]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[8]	<=	w[4]	^	T_w7;		w[9]	<=	w[5]	^	w[8];		w[10]	<=	w[6]	^	w[9];	w[11]	<=	w[7]	^	w[10];
+					end
+				else
+					begin
+						w[8]	<=	w[8];	w[9]	<=	w[9];	w[10]	<=	w[10];	w[11]	<=	w[11];
+					end
+			end
+	
+	end
+
+	RconKey_pipline	Tfun3(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[11]		), 
+		.Rcon		(8'h04		),
+		.Rkey_out	(T_w11		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[12]	<=	32'b0;		w[13]	<=	32'b0;		w[14]	<=	32'b0;		w[15]	<=	32'b0;	 */			
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[12]	<=	w[8]	^	T_w11;		w[13]	<=	w[9]	^	w[12];		w[14]	<=	w[10]	^	w[13];		w[15]	<=	w[11]	^	w[14];
+					end
+				else
+					begin
+						w[12]	<=	w[12];	w[13]	<=	w[13];	w[14]	<=	w[14];	w[15]	<=	w[15];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun4(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[15]		), 
+		.Rcon		(8'h08		),
+		.Rkey_out	(T_w15		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[16]	<=	32'b0;		w[17]	<=	32'b0;		w[18]	<=	32'b0;		w[19]	<=	32'b0;	 */			
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[16]	<=	w[12]	^	T_w15;		w[17]	<=	w[13]	^	w[16];		w[18]	<=	w[14]	^	w[17];		w[19]	<=	w[15]	^	w[18];
+					end
+				else
+					begin
+						w[16]	<=	w[16];	w[17]	<=	w[17];	w[18]	<=	w[18];	w[19]	<=	w[19];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun5(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[19]		), 
+		.Rcon		(8'h10		),
+		.Rkey_out	(T_w19		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[20]	<=	32'b0;		w[21]	<=	32'b0;		w[22]	<=	32'b0;		w[23]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[20]	<=	w[16]	^	T_w19;		w[21]	<=	w[17]	^	w[20];		w[22]	<=	w[18]	^	w[21];		w[23]	<=	w[19]	^	w[22];
+					end
+				else
+					begin
+						w[20]	<=	w[20];	w[21]	<=	w[21];	w[22]	<=	w[22];	w[23]	<=	w[23];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun6(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[23]		), 
+		.Rcon		(8'h20		),
+		.Rkey_out	(T_w23		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[24]	<=	32'b0;		w[25]	<=	32'b0;		w[26]	<=	32'b0;		w[27]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[24]	<=	w[20]	^	T_w23;		w[25]	<=	w[21]	^	w[24];		w[26]	<=	w[22]	^	w[25];		w[27]	<=	w[23]	^	w[26];
+					end
+				else
+					begin
+						w[24]	<=	w[24];	w[25]	<=	w[25];	w[26]	<=	w[26];	w[27]	<=	w[27];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun7(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[27]		), 
+		.Rcon		(8'h40		),
+		.Rkey_out	(T_w27		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[28]	<=	32'b0;		w[29]	<=	32'b0;		w[30]	<=	32'b0;		w[31]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[28]	<=	w[24]	^	T_w27;		w[29]	<=	w[25]	^	w[28];		w[30]	<=	w[26]	^	w[29];		w[31]	<=	w[27]	^	w[30];
+					end
+				else
+					begin
+						w[28]	<=	w[28];	w[29]	<=	w[29];	w[30]	<=	w[30];	w[31]	<=	w[31];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun8(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[31]		), 
+		.Rcon		(8'h80		),
+		.Rkey_out	(T_w31		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[32]	<=	32'b0;		w[33]	<=	32'b0;		w[34]	<=	32'b0;		w[35]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[32]	<=	w[28]	^	T_w31;		w[33]	<=	w[29]	^	w[32];		w[34]	<=	w[30]	^	w[33];		w[35]	<=	w[31]	^	w[34];
+					end
+				else
+					begin
+						w[32]	<=	w[32];	w[33]	<=	w[33];	w[34]	<=	w[34];	w[35]	<=	w[35];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun9(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[35]		), 
+		.Rcon		(8'h1b		),
+		.Rkey_out	(T_w35		)
+	);
+	
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[36]	<=	32'b0;		w[37]	<=	32'b0;		w[38]	<=	32'b0;		w[39]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[36]	<=	w[32]	^	T_w35;		w[37]	<=	w[33]	^	w[36];		w[38]	<=	w[34]	^	w[37];		w[39]	<=	w[35]	^	w[38];
+					end
+				else
+					begin
+						w[36]	<=	w[36];	w[37]	<=	w[37];	w[38]	<=	w[38];	w[39]	<=	w[39];
+					end
+			end
+	
+	end
+	
+	RconKey_pipline	Tfun10(
+		.clk		(clk		),
+		.rst_n		(rst_n		),
+		.Rkey_in	(w[39]		), 
+		.Rcon		(8'h36		),
+		.Rkey_out	(T_w39		)
+	);
+
+reg		key_10_end;
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			begin
+				/* w[40]	<=	32'b0;		w[41]	<=	32'b0;		w[42]	<=	32'b0;		//w[43]	<=	32'b0; */				
+			end
+		else
+			begin
+				if(key_en)
+					begin
+						w[40]	<=	w[36]	^	T_w39;		w[41]	<=	w[37]	^	w[40];		w[42]	<=	w[38]	^	w[41];		w[43]	<=	w[39]	^	w[42];
+					end
+				else
+					begin
+						w[40]	<=	w[40];	w[41]	<=	w[41];	w[42]	<=	w[42];	w[43]	<=	w[43];
+					end
+			end
+	
+	end
+
+wire [127:0]	wxor;
+assign wxor	=	{w[40],w[41],w[42],w[43]}	^	{w[40],w[41],w[42],w[43]};	
+
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			key_10_end	<=	1'b0;
+		else if(wxor	==	128'b0)
+			key_10_end	<=	1'b1;
+		else
+			key_10_end	<=	1'b0;
+	end
+
+/* reg		[9:0]	R_cnt;
+always @(posedge clk)
+begin
+	if(!rst_n)
+		R_cnt <= 0;
+	else if(key_10_end)
+		R_cnt <= R_cnt + 1;
+	else 
+		R_cnt <= R_cnt;
+
+end
+
+always @(posedge clk)
+	begin
+		if(!rst_n)
+			key_10_end	<=	1'b0;
+		else if(wxor	==	128'b0 && R_cnt<10'd72)
+			key_10_end	<=	1'b1;
+		else
+			key_10_end	<=	1'b0;
+	end */
+	
+assign round_en	=	key_10_end;
+
+/* reg	[127:0]	R_key_out;
+
+always @(posedge clk)
+	begin
+		if(key_10_end)
+			begin
+				case(nround)
+					begin
+						1:R_key_out	<=	{w[4],w[5],w[6],w[7]};
+						2:R_key_out	<=	{w[8],w[9],w[10],w[11]};
+						3:R_key_out	<=	{w[12],w[13],w[14],w[15]};
+						4:R_key_out	<=	{w[16],w[17],w[18],w[19]};
+						5:R_key_out	<=	{w[20],w[21],w[22],w[23]};
+						6:R_key_out	<=	{w[24],w[25],w[26],w[27]};
+						7:R_key_out	<=	{w[28],w[29],w[30],w[31]};
+						8:R_key_out	<=	{w[32],w[33],w[34],w[35]};
+						9:R_key_out	<=	{w[36],w[37],w[38],w[39]};
+						10:R_key_out	<=	{w[40],w[41],w[42],w[43]};
+					end
+			end
+	
+	end */
+	
+
+assign key1_out = {w[4],w[5],w[6],w[7]};
+assign key2_out = {w[8],w[9],w[10],w[11]};
+assign key3_out = {w[12],w[13],w[14],w[15]};
+assign key4_out = {w[16],w[17],w[18],w[19]};
+assign key5_out = {w[20],w[21],w[22],w[23]};
+assign key6_out = {w[24],w[25],w[26],w[27]};
+assign key7_out = {w[28],w[29],w[30],w[31]};
+assign key8_out = {w[32],w[33],w[34],w[35]};
+assign key9_out = {w[36],w[37],w[38],w[39]};
+assign key10_out = {w[40],w[41],w[42],w[43]};
+	
+	
+endmodule
