@@ -157,8 +157,8 @@ class AESCoreTester extends AnyFunSuite {
       initializeIO(dut.io)
       dut.clockDomain.waitActiveEdge()
 
-      for(_ <- 0 to 20){
-        doSim(dut.io, dut.clockDomain, enc = true )(AESREF.block(128, verbose = false))
+      for(_ <- 0 to 1){
+        doSim(dut.io, dut.clockDomain, enc = true ,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
       }
 
     }

@@ -77,10 +77,14 @@ object AES_CONFIG {
   }
 }
 
-case class MyroundFunction() extends Component{
+case class MyroundFunction(twoRound:Boolean = false) extends Component{
   val io = new Bundle {
     val roundData = in Bits(128 bits)
-    //val roundKey = in Bits(128 bits)
+    val roundKey = if (twoRound) {
+      in Bits(256 bits)
+    } else {
+      in Bits(128 bits)
+    }
     val needMix = in Bool()
     val result = out Bits(128 bits)
   }
@@ -120,8 +124,12 @@ case class MyroundFunction() extends Component{
     return dataState.asBits
   }
 
-  io.result := roundFunction(io.roundData, io.needMix)
-
+  if (twoRound) {
+    val firstRound = roundFunction(io.roundData, False)  ^ io.roundKey(127 downto 0)
+    io.result := roundFunction(firstRound , io.needMix) ^ io.roundKey(255 downto 128)
+  } else {
+    io.result := roundFunction(io.roundData  , io.needMix) ^ io.roundKey
+  }
 }
 //
 //object Round {

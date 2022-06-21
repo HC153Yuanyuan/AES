@@ -29,7 +29,7 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
     val engine = slave(CryptoBlockIO(cfg))
   }
 
-  val rndFuc = MyroundFunction()
+  val rndFuc = MyroundFunction(false)
 
   def genRoundKey(lastRoundKey:Bits,roundNum:Bits):Bits = {
     val newKey = Vec(Bits(32 bits),4)
@@ -41,23 +41,29 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
     return newKey.reverse.asBits
   }
 
+  def gen2RoundKey(lastRoundKey:Bits,roundNum:Bits) = {
+    val firstKey = genRoundKey(lastRoundKey,roundNum)
+    val secretKey = genRoundKey(firstKey,(roundNum.asUInt+1).asBits)
+    B(secretKey,firstKey)
+  }
+
   val CtrlState = new Area {
     val enginRdy = RegInit(True)
     val ongoing = RegInit(False)
-    val nextrndKey = Reg(Bits(128 bits)) init  0
     val rndCnt = Reg(UInt(4 bits)) init  0
     val dataBuf = Reg(Bits(128 bits)) init  0
     val lastRound = rndCnt === (AES_CONFIG.nbrRound(keyWidth)-1)
     val currndKey = Bits(128 bits)
+    val lastKey = RegNext(currndKey)
     val keyRcon = Mem(Bits(8 bits), AES_CONFIG.rcon(keyWidth).map(B(_, 8 bits)))
 
     when(io.engine.cmd.fire) {
-      rndFuc.io.roundData := io.engine.cmd.block ^ currndKey
-     // rndFuc.io.roundKey := currndKey
+      rndFuc.io.roundData := io.engine.cmd.block ^ io.engine.cmd.key
+      rndFuc.io.roundKey := currndKey
       rndFuc.io.needMix := !lastRound
     } .otherwise {
-      rndFuc.io.roundData := dataBuf ^ currndKey
-     // rndFuc.io.roundKey := currndKey
+      rndFuc.io.roundData := dataBuf
+      rndFuc.io.roundKey := currndKey
       rndFuc.io.needMix := !lastRound
     }
 
@@ -67,13 +73,11 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
       ongoing := True
       enginRdy := False
       rndCnt := 1
-      currndKey := io.engine.cmd.key //
-      nextrndKey := genRoundKey(io.engine.cmd.key.subdivideIn(32 bits).reverse.asBits,B(1,8 bits))
+      currndKey := genRoundKey(io.engine.cmd.key.subdivideIn(32 bits).reverse.asBits,B(1,8 bits)) //
       dataBuf := rndFuc.io.result //Round.roundFunction(io.engine.cmd.block,currndKey,lastRound)
     } .elsewhen(ongoing) {
       enginRdy := False
-      currndKey := nextrndKey
-      nextrndKey := genRoundKey(nextrndKey.subdivideIn(32 bits).reverse.asBits,keyRcon(rndCnt+1))                 //(B(1,8 bits)<<rndCnt).resize(8 bits))
+      currndKey := genRoundKey(lastKey.subdivideIn(32 bits).reverse.asBits,keyRcon(rndCnt+1))
       dataBuf := rndFuc.io.result //Round.roundFunction(dataBuf,currndKey,lastRound)
       when(!lastRound) {
         rndCnt := rndCnt + 1
@@ -88,6 +92,6 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
   }
 
   io.engine.cmd.ready := CtrlState.enginRdy
-  io.engine.rsp.block := CtrlState.dataBuf ^ CtrlState.nextrndKey
+  io.engine.rsp.block := CtrlState.dataBuf
   io.engine.rsp.valid := RegNext(CtrlState.lastRound,False)
 }
