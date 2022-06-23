@@ -153,7 +153,7 @@ class AESCoreTester extends AnyFunSuite {
     }
 
     SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withFSDBWave.compile(new AES_CORE(128 bits)).doSim { dut =>
-      dut.clockDomain.forkStimulus(10000)
+      dut.clockDomain.forkStimulus(50000)
       initializeIO(dut.io)
       dut.clockDomain.waitActiveEdge()
 

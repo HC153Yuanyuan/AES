@@ -125,10 +125,13 @@ case class MyroundFunction(twoRound:Boolean = false) extends Component{
   }
 
   if (twoRound) {
-    val firstRound = roundFunction(io.roundData, False)  ^ io.roundKey(127 downto 0)
+    val firstRound = roundFunction(io.roundData, True)  ^ io.roundKey(127 downto 0)
+    report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey(127 downto 0),"\tresult:=\t",firstRound.asUInt))
     io.result := roundFunction(firstRound , io.needMix) ^ io.roundKey(255 downto 128)
+    report(Seq("io.roundData:=\t",firstRound.asUInt,"\tkey:\t",io.roundKey(255 downto 128),"\tresult:=\t",io.result.asUInt))
   } else {
     io.result := roundFunction(io.roundData  , io.needMix) ^ io.roundKey
+    report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey,"\tresult:=\t",io.result.asUInt))
   }
 }
 //
