@@ -63,11 +63,6 @@ object AES_CONFIG {
   def RconKey(Rkey_in:Bits, Rcon:Bits):Bits = {
     val wordVec = Rkey_in.rotateLeft(8)
     val KeyNew = Vec(Bits(8 bits),4)
-//    val	word_3	=	Rkey_in(23 downto 16)
-//    val	word_2	=	Rkey_in(15 downto 8)
-//    val	word_1	=	Rkey_in(7  downto 0)
-//    val	word_0	=	Rkey_in(31 downto 24)
-
     val VecTmp = Sbox.Sbox32(wordVec).subdivideIn(8 bits)
     KeyNew(3) := VecTmp(3) ^ Rcon
     KeyNew(2) := VecTmp(2)
@@ -133,46 +128,14 @@ case class MyroundFunction(twoRound:Boolean = false) extends Component{
     io.result := roundFunction(io.roundData  , io.needMix) ^ io.roundKey
     report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey,"\tresult:=\t",io.result.asUInt))
   }
+
+  def driveFrom(roundData:Bits,roundKey:Bits,needMix:Bool):Bits = {
+    io.roundData := roundData
+    io.roundKey := roundKey
+    io.needMix :=needMix
+    io.result
+  }
 }
-//
-//object Round {
-//
-//  def roundFunction(roundData:Bits,roundKey:Bits,needMix:Bool):Bits = {
-//    val sboxData  = Vec(Bits(32 bits), 4)
-//    val byteReplaceData  = Vec(Bits(32 bits), 4)
-//    val dataState  = Vec(Bits(32 bits), 4)
-//
-//    val shiftTmpByte = Vec(Bits(8 bits), 16)
-//
-//
-//    sboxData := (roundData ^ roundKey).subdivideIn(32 bits)
-//
-//    for (i <- 0 to sboxData.length-1) {
-//      byteReplaceData(i) := Sbox.Sbox32(sboxData(i))
-//    }
-//
-//    val tmpByte = byteReplaceData.asBits.subdivideIn(8 bits)
-//
-//    for ((src, dst) <- AES_CONFIG.shiftRowIndex.zipWithIndex){
-//      shiftTmpByte(dst) := tmpByte(src)
-//    }
-//
-//    val afterShift = Vec(Bits(32 bits), 4)
-//    afterShift := shiftTmpByte.asBits.subdivideIn(32 bits)
-//
-//    when(needMix) {
-//      for (i <- 0 to afterShift.length-1) {
-//        dataState(i) := AES_CONFIG.MixColumn32(afterShift(i))
-//      }
-//    } otherwise {
-//      for (i <- 0 to afterShift.length-1) {
-//        dataState(i) := afterShift(i)
-//      }
-//    }
-//    return dataState.asBits
-//  }
-//
-//}
 
 /**
   * Symmetric Crypto block generiics
