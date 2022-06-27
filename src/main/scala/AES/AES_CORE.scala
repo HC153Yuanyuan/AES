@@ -63,15 +63,21 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
     val currndKey = if(AES.enable2Round)  Bits(256 bits)  else Bits(128 bits)
     val nextRndCnt = UInt(rndCnt.getWidth bits)
     val keyModeLatch = RegNextWhen(io.engine.cmd.mode,io.engine.cmd.fire)
+    val firstRoundKey = Bits(128 bits)
+      when(io.engine.cmd.mode === 2) {
+        firstRoundKey := io.engine.cmd.key(255 downto 128)
+      } otherwise {
+        firstRoundKey := io.engine.cmd.key(127 downto 0)
+      }
 
     // set default value
     currndKey := 0
     keyOp.driveFrom(False,0,0,0)
     rndFuc.driveFrom( 0, 0,True)
 
-    report(Seq("encDecSel = ",encDecSel))
-    report(Seq("lastRoundCnt = ",lastRoundCnt))
-    report(Seq("rndCnt = ",rndCnt))
+//    report(Seq("encDecSel = ",encDecSel))
+//    report(Seq("lastRoundCnt = ",lastRoundCnt))
+//    report(Seq("rndCnt = ",rndCnt))
 
     nextRndCnt := rndCnt
 
@@ -85,7 +91,7 @@ case class AES_ENGINE(keyWidth:BitCount) extends Component {
       }
       rndCnt := nextRndCnt
       currndKey := keyOp.driveFrom(True,io.engine.cmd.key, nextRndCnt, io.engine.cmd.mode)
-      dataBuf := rndFuc.driveFrom( io.engine.cmd.block ^ io.engine.cmd.key(255 downto 128), currndKey, True)
+      dataBuf := rndFuc.driveFrom(io.engine.cmd.block ^ firstRoundKey , currndKey, True)
     } .elsewhen(ongoing) {
       enginRdy := False
       when(encDecSel) {

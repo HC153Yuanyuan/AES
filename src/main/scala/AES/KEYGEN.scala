@@ -22,13 +22,12 @@ case class KEYGEN(keyWidth:BitCount) extends Component {
     val newKey = Vec(Bits(32 bits),keyWidth.value / 32)
     val lastKey = lastRoundKey.subdivideIn(32 bits)
 
+    report(Seq(firstRound,"\t",lastRoundKey,"\t",roundNum,"\t",cntStage))
+
     if (keyWidth.value == 256) {
-      //newKey.foreach(_ := 0)
       newKey := lastKey
       when(keyMode === AESMode.AES_256) {
-      //  when(firstRound) {
 
-      //  }
         when(roundNum(0) === True) {
           newKey(0) := lastKey(0) ^ AES_CONFIG.gFunc(Rkey_in=lastKey(7),keyRcon(firstRound?U(1)|cntStage))
           newKey(1) := lastKey(1) ^ newKey(0)
@@ -41,7 +40,7 @@ case class KEYGEN(keyWidth:BitCount) extends Component {
           newKey(7) := lastKey(7) ^ newKey(6)
         }
       } otherwise {
-        newKey(0) := lastKey(0) ^ AES_CONFIG.gFunc(Rkey_in=lastKey(3),keyRcon(firstRound?U(1)|cntStage))
+        newKey(0) := lastKey(0) ^ AES_CONFIG.gFunc(Rkey_in=lastKey(3),keyRcon(roundNum))
         newKey(1) := lastKey(1) ^ newKey(0)
         newKey(2) := lastKey(2) ^ newKey(1)
         newKey(3) := lastKey(3) ^ newKey(2)
@@ -59,64 +58,64 @@ case class KEYGEN(keyWidth:BitCount) extends Component {
     }
   }
 
+
+  def getKey(keyMode:UInt,roundNum_0:Bool,newKey:Vec[Bits]):Bits = {
+    val returnKey = Bits(128 bits)
+    if(keyWidth.value == 256) {
+      when(keyMode === AESMode.AES_256) {
+        returnKey := roundNum_0.mux(
+          True  -> newKey.reverse.asBits()(127 downto 0),
+          False  -> newKey.reverse.asBits()(255 downto 128)
+        )
+      } otherwise {
+        returnKey := newKey.slice(0,4).reverse.asBits
+      }
+      returnKey
+    } else {
+      returnKey := newKey.slice(0,4).reverse.asBits
+      returnKey
+    }
+  }
+
   def genRoundKey(firstRound:Bool,lastRoundKey:Bits,roundNum:UInt,keyMode:UInt) = {
     val newKey:Vec[Bits] = Vec(Bits(32 bits), keyWidth.value/32)
     val nxtCntStage = UInt(4 bits)
 
-    when(firstRound) {
-      nxtCntStage := 1
-    } .elsewhen(roundNum(0) === False) {
-      nxtCntStage := cntStage + 1
-    } otherwise {
-      nxtCntStage := cntStage
-    }
+
 
     if (!AES.enable2Round) {
       val returnKey = Bits(128 bits)
+      when(firstRound) {
+        nxtCntStage := 1
+      } .elsewhen((roundNum(0) === False) ) {
+        nxtCntStage := cntStage + 1
+      } otherwise {
+        nxtCntStage := cntStage
+      }
 
       newKey := genRoundKeyBase(firstRound,lastRoundKey,roundNum,cntStage,keyMode)
       cntStage := nxtCntStage
-      if(keyWidth.value == 256) {
-        when(keyMode === 2) {
-          returnKey := roundNum(0).mux(
-            True  -> newKey.reverse.asBits()(127 downto 0),
-            False  -> newKey.reverse.asBits()(255 downto 128)
-          )
-        } otherwise {
-          returnKey := newKey.slice(0,4).reverse.asBits
-        }
-      } else {
-        returnKey := newKey.slice(0,4).reverse.asBits
-      }
-
+      returnKey := getKey(keyMode,roundNum(0),newKey)
       keyStashReg := newKey.asBits
       returnKey
     } else {
       val firstKey = Bits(128 bits)
       val secKey = Bits(128 bits)
-      val newKeyTmp :Vec[Bits] = null
-      cntStage := cntStage + 1
+      val newKeyTmp :Vec[Bits] = Vec(Bits(32 bits),keyWidth.value / 32)
+      when(firstRound) {
+        cntStage := 2
+      } .otherwise {
+        cntStage := cntStage + 1
+      }
       newKeyTmp := genRoundKeyBase(firstRound,lastRoundKey,roundNum,cntStage,keyMode)
-      when(keyMode === AESMode.AES_256) {
-        firstKey := roundNum(0).mux(
-          True -> newKeyTmp.reverse.asBits()(127 downto 0),
-          False  -> newKeyTmp.reverse.asBits()(255 downto 128)
-        )
-      } otherwise {
-        firstKey := newKeyTmp.slice(0,3).reverse.asBits
-      }
 
+      firstKey := getKey(keyMode,roundNum(0),newKeyTmp)
+
+      nxtCntStage := roundNum(0) ? cntStage | (cntStage + 1)
       newKey := genRoundKeyBase(False,newKeyTmp.asBits,(roundNum+1),nxtCntStage,keyMode)
-      when(keyMode === AESMode.AES_256) {
-        secKey := roundNum(0).mux(
-          False -> newKey.reverse.asBits()(127 downto 0),
-          True  -> newKey.reverse.asBits()(255 downto 128)
-        )
-      } otherwise {
-        secKey := newKey.slice(0,3).reverse.asBits
-      }
-
+      secKey := getKey(keyMode,!roundNum(0),newKey)
       keyStashReg := newKey.asBits
+      //report(Seq(secKey,firstKey))
       B(secKey,firstKey)
     }
   }

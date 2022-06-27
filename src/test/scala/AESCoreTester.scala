@@ -123,14 +123,14 @@ class AESCoreTester extends AnyFunSuite {
     }
 
 
-    def doSim(dut: CryptoBlockIO,clockDomain: ClockDomain, enc: Boolean, blockIn: BigInt = null, keyIn: BigInt = null)(refCrypto: (BigInt, BigInt, Boolean) => BigInt ): Unit = {
+    def doSim(dut: CryptoBlockIO,clockDomain: ClockDomain, enc: Boolean, mode:Int ,blockIn: BigInt = null, keyIn: BigInt = null)(refCrypto: (BigInt, BigInt, Boolean) => BigInt ): Unit = {
       val block_in = if(blockIn == null) BigInt(dut.cmd.block.getWidth, Random) else blockIn
       val key      = if(keyIn == null)   BigInt(dut.cmd.key.getWidth, Random)   else keyIn
 
       dut.cmd.valid #= true
       dut.cmd.block #= block_in
       dut.cmd.key #= key
-      dut.cmd.mode #= 2
+      dut.cmd.mode #= mode
       if(dut.config.useEncDec) dut.cmd.enc #= enc
       clockDomain.waitActiveEdge()
       dut.cmd.valid #= false
@@ -160,7 +160,9 @@ class AESCoreTester extends AnyFunSuite {
       dut.clockDomain.waitActiveEdge()
 
       for(_ <- 0 to 1){
-        doSim(dut.io, dut.clockDomain, enc = true ,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,mode = 0,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,mode = 2,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,mode = 0,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
       }
 
     }

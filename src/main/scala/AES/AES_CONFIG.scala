@@ -5,9 +5,9 @@ import spinal.lib._
 import spinal.lib.{Flow, IMasterSlave, Stream, master, slave}
 
 object AESMode {
-  val AES_128 = U(0,2 bits)
-  val AES_192 = U(1,2 bits)
-  val AES_256 = U(2,2 bits)
+  def AES_128 = U(0,2 bits)
+  def AES_192 = U(1,2 bits)
+  def AES_256 = U(2,2 bits)
 }
 
 
@@ -134,12 +134,12 @@ case class MyroundFunction(twoRound:Boolean = false) extends Component{
 
   if (twoRound) {
     val firstRound = roundFunction(io.roundData, True)  ^ io.roundKey(127 downto 0)
-    report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey(127 downto 0),"\tresult:=\t",firstRound.asUInt))
+   // report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey(127 downto 0),"\tresult:=\t",firstRound.asUInt))
     io.result := roundFunction(firstRound , io.needMix) ^ io.roundKey(255 downto 128)
-    report(Seq("io.roundData:=\t",firstRound.asUInt,"\tkey:\t",io.roundKey(255 downto 128),"\tresult:=\t",io.result.asUInt))
+   // report(Seq("io.roundData:=\t",firstRound.asUInt,"\tkey:\t",io.roundKey(255 downto 128),"\tresult:=\t",io.result.asUInt))
   } else {
     io.result := roundFunction(io.roundData  , io.needMix) ^ io.roundKey
-    report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey,"\tresult:=\t",io.result.asUInt))
+   // report(Seq("io.roundData:=\t",io.roundData.asUInt,"\tkey:\t",io.roundKey,"\tresult:=\t",io.result.asUInt))
   }
 
   def driveFrom(roundData:Bits,roundKey:Bits,needMix:Bool):Bits = {

@@ -3,7 +3,7 @@ import spinal.core._
 
 object AES {
   def blockWidth  = 128 bits
-  def enable2Round = false
+  def enable2Round = true
 //  def nbrRound(keySize: BitCount): Int = keySize.value match {
 //    case 128 => 10
 //    case 192 => 12
