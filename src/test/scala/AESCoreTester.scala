@@ -130,9 +130,11 @@ class AESCoreTester extends AnyFunSuite {
       dut.cmd.valid #= true
       dut.cmd.block #= block_in
       dut.cmd.key #= key
+      dut.cmd.mode #= 2
       if(dut.config.useEncDec) dut.cmd.enc #= enc
       clockDomain.waitActiveEdge()
       dut.cmd.valid #= false
+      dut.cmd.enc #= false
       dut.cmd.block #= BigInt(dut.cmd.block.getWidth, Random)
       dut.cmd.key #= BigInt(dut.cmd.block.getWidth, Random)
       waitUntil(dut.rsp.valid.toBoolean == true)
@@ -152,13 +154,13 @@ class AESCoreTester extends AnyFunSuite {
 
     }
 
-    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withFSDBWave.compile(new AES_CORE(128 bits)).doSim { dut =>
-      dut.clockDomain.forkStimulus(50000)
+    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withFSDBWave.compile(new AES_CORE(256 bits)).doSim { dut =>
+      dut.clockDomain.forkStimulus(10000)
       initializeIO(dut.io)
       dut.clockDomain.waitActiveEdge()
 
       for(_ <- 0 to 1){
-        doSim(dut.io, dut.clockDomain, enc = true ,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = false))
       }
 
     }

@@ -1,18 +1,19 @@
 package AES
 
 import spinal.core._
+import spinal.lib._
 import spinal.lib.{Flow, IMasterSlave, Stream, master, slave}
+
+object AESMode {
+  val AES_128 = U(0,2 bits)
+  val AES_192 = U(1,2 bits)
+  val AES_256 = U(2,2 bits)
+}
 
 
 object AES_CONFIG {
   def blockWidth  = 128 bits
 
-  def nbrRound(keySize: BitCount): Int = keySize.value match {
-    case 128 => 10
-    case 192 => 12
-    case 256 => 14
-    case _   => SpinalError(s"AES doesn't support the following key size $keySize")
-  }
 
   def rcon(keyWidth: BitCount): List[Int] = {
     val rconValue = List(
@@ -20,7 +21,14 @@ object AES_CONFIG {
       0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39,
       0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a
     )
-    return rconValue.take(AES.nbrRound(keyWidth) + 1)
+    if (keyWidth == 128) {
+      return rconValue.take(10 + 1)
+    } else if (keyWidth == 192) {
+      return rconValue.take(12 + 1)
+    } else {
+      return rconValue.take(14 + 1)
+    }
+
   }
 
   def shiftRowIndex = List(
@@ -60,7 +68,7 @@ object AES_CONFIG {
   }
 
 
-  def RconKey(Rkey_in:Bits, Rcon:Bits):Bits = {
+  def gFunc(Rkey_in:Bits, Rcon:Bits):Bits = {
     val wordVec = Rkey_in.rotateLeft(8)
     val KeyNew = Vec(Bits(8 bits),4)
     val VecTmp = Sbox.Sbox32(wordVec).subdivideIn(8 bits)
@@ -69,6 +77,11 @@ object AES_CONFIG {
     KeyNew(1) := VecTmp(1)
     KeyNew(0) := VecTmp(0)
     KeyNew.asBits
+  }
+
+  def hFunc(Rkey_in:Bits):Bits = {
+    val result = Sbox.Sbox32(Rkey_in)
+    return result
   }
 }
 
@@ -132,10 +145,14 @@ case class MyroundFunction(twoRound:Boolean = false) extends Component{
   def driveFrom(roundData:Bits,roundKey:Bits,needMix:Bool):Bits = {
     io.roundData := roundData
     io.roundKey := roundKey
-    io.needMix :=needMix
+    io.needMix := needMix
     io.result
   }
 }
+
+
+
+
 
 /**
   * Symmetric Crypto block generiics
@@ -151,6 +168,7 @@ case class CryptoBlockConfig(
 
 
 case class coreDataIn(config: CryptoBlockConfig) extends Bundle {
+  val mode   = UInt(2 bits)
   val key    = Bits(config.keyWidth)
   val block  = Bits(config.blockWidth)
   val enc    = if(config.useEncDec) Bool else null
