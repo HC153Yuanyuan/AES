@@ -1,5 +1,5 @@
 
-import AES.{AES_CORE, CryptoBlockIO}
+//import AES.{AES_CORE, CryptoBlockIO}
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import org.scalatest.funsuite.AnyFunSuite
@@ -7,6 +7,7 @@ import spinal.core.{SpinalConfig, assert, _}
 import spinal.core.sim.{SimConfig, VCSFlags}
 import spinal.core.sim._
 import spinal.lib._
+import AES_256._
 
 import scala.util.Random
 
@@ -77,7 +78,7 @@ object AESREF {
   def encryptBlock(key: BigInt, block: BigInt, keyLenght:Int, verbose: Boolean = false): BigInt = {
 
     // Cast the input key
-    val keyModified = castByteArray(key.toByteArray, keyLenght / 8)
+    val keyModified = castByteArray(key.toByteArray, keyLenght / 8).reverse
     val myKey       = new SecretKeySpec(keyModified, "AES")
 
     // Create the cipher
@@ -87,10 +88,10 @@ object AESREF {
     desCipher.init(Cipher.ENCRYPT_MODE, myKey)
 
     // cast input block
-    val blockPlain = castByteArray(block.toByteArray, 16)
+    val blockPlain = castByteArray(block.toByteArray, 16).reverse
 
     // Encrypt the text
-    val blockCipher = desCipher.doFinal(blockPlain)
+    val blockCipher = desCipher.doFinal(blockPlain).reverse
 
     if(verbose){
       println(s"Plain  : 0x${blockPlain.map(b  => "%02X".format(b)).mkString("")}")
@@ -126,6 +127,9 @@ class AESCoreTester extends AnyFunSuite {
     def doSim(dut: CryptoBlockIO,clockDomain: ClockDomain, enc: Boolean, mode:Int ,blockIn: BigInt = null, keyIn: BigInt = null)(refCrypto: (BigInt, BigInt, Boolean) => BigInt ): Unit = {
       val block_in = if(blockIn == null) BigInt(dut.cmd.block.getWidth, Random) else blockIn
       val key      = if(keyIn == null)   BigInt(dut.cmd.key.getWidth, Random)   else keyIn
+      val keyRemap = if(dut.cmd.key.getWidth == 128) f"$key%032X" else f"$key%064X"
+      val aa = for (i <- 0 until  dut.cmd.key.getWidth/32) yield keyRemap.slice(i*8,(i+1)*8)
+      val newKey = BigInt(aa.reverse.reduce(_+_),16)
 
       dut.cmd.valid #= true
       dut.cmd.block #= block_in
@@ -154,15 +158,16 @@ class AESCoreTester extends AnyFunSuite {
 
     }
 
-    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withFSDBWave.compile(new AES_CORE(256 bits)).doSim { dut =>
+    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withFSDBWave.compile(new AES256()).doSim { dut =>
       dut.clockDomain.forkStimulus(10000)
       initializeIO(dut.io)
       dut.clockDomain.waitActiveEdge()
 
       for(_ <- 0 to 1){
         doSim(dut.io, dut.clockDomain, enc = true ,mode = 0,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
-        doSim(dut.io, dut.clockDomain, enc = true ,mode = 2,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,mode = 1,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = true))
         doSim(dut.io, dut.clockDomain, enc = true ,mode = 0,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(128, verbose = false))
+        doSim(dut.io, dut.clockDomain, enc = true ,mode = 1,blockIn = 0x11223344,keyIn = 0x55667788)(AESREF.block(256, verbose = true))
       }
 
     }

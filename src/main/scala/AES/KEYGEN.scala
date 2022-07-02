@@ -97,6 +97,7 @@ case class KEYGEN(keyWidth:BitCount) extends Component {
       cntStage := nxtCntStage
       returnKey := getKey(keyMode,roundNum(0),newKey)
       keyStashReg := newKey.asBits
+      report(Seq("returnKey = ",returnKey))
       returnKey
     } else {
       val firstKey = Bits(128 bits)
