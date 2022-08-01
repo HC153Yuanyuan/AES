@@ -79,7 +79,7 @@ case class DmaTester() extends AnyFunSuite {
 
       var count1 = 0
       var timeout = 0
-      while (count1 < 10) {
+      while (count1 < 20) {
         timeout = 0
         dma.wrChannel.wrStream.valid.randomize()
         dma.wrChannel.wrStream.fragment #= count1 + 10
@@ -94,6 +94,7 @@ case class DmaTester() extends AnyFunSuite {
           count1 += 1
         }
       }
+      dma.wrChannel.wrStream.valid #= false
     }
 
     def ioInit(dut:DmaNodeInf) = {
@@ -111,7 +112,7 @@ case class DmaTester() extends AnyFunSuite {
     }
 
 
-    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withFSDBWave.compile(DmaWrapper(dmaCfg,ahbCfg)).doSimUntilVoid { dut =>
+    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withWave.compile(DmaWrapper(dmaCfg,ahbCfg)).doSimUntilVoid { dut =>
       dut.clockDomain.forkStimulus(100000)
       dut.clockDomain.waitActiveEdge()
       for (node <- dut.io.nodeStream) {
@@ -120,9 +121,9 @@ case class DmaTester() extends AnyFunSuite {
 
       val threadPoll = for (i <- 0 until 2) yield fork {
         if (i == 0) {
-          setCmd(dut.io.nodeStream(i).cmd,true,0,10)
+          setCmd(dut.io.nodeStream(i).cmd,true,0,20)
         } else {
-          setCmd(dut.io.nodeStream(i).cmd,true,40,10)
+          setCmd(dut.io.nodeStream(i).cmd,true,80,20)
         }
         driveData(dut.io.nodeStream(i),dut.clockDomain)
       }
