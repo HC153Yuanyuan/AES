@@ -58,15 +58,15 @@ case class DmaCtrl(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
 
   val logic = new Area {
-    val addrLatch = RegNextWhen(io.dmaNode.cmd.startAddr,io.dmaNode.cmd.rspVld)
-    val transLenLatch = RegNextWhen(io.dmaNode.cmd.transLen,io.dmaNode.cmd.rspVld)
-    val writeLatch = RegNextWhen(io.dmaNode.cmd.wrOp,io.dmaNode.cmd.rspVld)
+    val addrLatch = RegNextWhen(io.dmaNode.cmd.startAddr,io.dmaNode.cmd.rspStream.valid)
+    val transLenLatch = RegNextWhen(io.dmaNode.cmd.transLen,io.dmaNode.cmd.rspStream.valid)
+    val writeLatch = RegNextWhen(io.dmaNode.cmd.wrOp,io.dmaNode.cmd.rspStream.valid)
     val transCnt = Reg(UInt(c.lenWidth bits)) init 0
     val burstRemainCnt = Reg(UInt(c.lenWidth bits)) init 0
     val ahbBurstLast = io.ahbBus.last()
     val noBurstTrans = io.ahbBus.HBURST === B"000"
-    val busrtFirstTrans = RegInit(False) setWhen(ahbBurstLast || io.dmaNode.cmd.rspVld)  clearWhen(io.ahbBus.fire() && io.ahbBus.HTRANS(1) && ~ahbBurstLast)
-    val burstOnGoing = RegInit(False) setWhen(busrtFirstTrans.fall() && !noBurstTrans) clearWhen(ahbBurstLast || io.dmaNode.cmd.rspVld)
+    val busrtFirstTrans = RegInit(False) setWhen(ahbBurstLast || io.dmaNode.cmd.rspStream.valid)  clearWhen(io.ahbBus.fire() && io.ahbBus.HTRANS(1) && ~ahbBurstLast)
+    val burstOnGoing = RegInit(False) setWhen(busrtFirstTrans.fall() && !noBurstTrans) clearWhen(ahbBurstLast || io.dmaNode.cmd.rspStream.valid)
     val dataReady = False
 
 
@@ -90,7 +90,7 @@ case class DmaCtrl(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
 
 
-    when(io.dmaNode.cmd.rspVld) {
+    when(io.dmaNode.cmd.rspStream.valid) {
       burstRemainCnt := io.dmaNode.cmd.transLen
     } elsewhen(ahbBurstLast) {
       burstRemainCnt := transLenLatch - transCnt - 1
@@ -110,13 +110,13 @@ case class DmaCtrl(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
       HBURST
     }
 
-    io.dmaNode.cmd.rspVld := False
-    io.dmaNode.cmd.rspCode := U(0,c.rspWidth bits)
+    io.dmaNode.cmd.rspStream.valid := False
+    io.dmaNode.cmd.rspStream.payload := U(0,c.rspWidth bits)
 
     fsm.ST_CHK.whenIsActive {
       cmdChkPass := ChkCmd(io.dmaNode.cmd)
-      io.dmaNode.cmd.rspVld := True
-      io.dmaNode.cmd.rspCode := cmdChkPass ? U(0,c.rspWidth bits) | U(1,c.rspWidth bits)
+      io.dmaNode.cmd.rspStream.valid := True
+      io.dmaNode.cmd.rspStream.payload := cmdChkPass ? U(0,c.rspWidth bits) | U(1,c.rspWidth bits)
       transCnt := 0
     }
 

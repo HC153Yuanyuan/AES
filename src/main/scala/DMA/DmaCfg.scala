@@ -29,34 +29,40 @@ case class DmaCfg(
 )
 
 
-case class CmdChannel(c:DmaCfg) extends Bundle with IMasterSlave {
+case class CmdChannel(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle with IMasterSlave {
+  val id = if(withSlaveId) Bits(log2Up(c.slaveNode) bits) else null
   val startAddr = UInt(c.addrWidth bits)
   val wrOp = Bool()
   val transLen = UInt(c.lenWidth bits)
   val pri = UInt(c.priWidth bits)
   val reqVld = Bool()
-  val rspVld = Bool()
-  val rspCode = UInt(c.rspWidth bits)
+  val reqReady = Bool()
   val transCancel = Bool()
 
+  val rspStream = Stream(UInt(c.rspWidth bits))
+
   override def asMaster(): Unit = {
+    if (withSlaveId) {
+      in(id)
+    }
     in(startAddr, wrOp, transLen, pri, reqVld, transCancel)
-    out(rspVld, rspCode)
+    out(reqReady)
+    master(rspStream)
   }
 }
 
 
-case class WrChannel(c:DmaCfg) extends  Bundle with IMasterSlave {
+case class WrChannel(c:DmaCfg,withSlaveId:Boolean = false) extends  Bundle with IMasterSlave {
   // wrdata stream
-  val wrStream = Stream(Fragment(Bits(c.dataWidth bits)))
+  val wrStream = if (!withSlaveId) Stream(Fragment(Bits(c.dataWidth bits))) else Stream(Fragment(Bits(c.dataWidth + log2Up(c.slaveNode) bits)))
 
   override def asMaster(): Unit = {
     wrStream.asSlave()
   }
 }
 
-case class RdChannel(c:DmaCfg) extends  Bundle with IMasterSlave {
-  val rdStream = Stream(Fragment(Bits(c.dataWidth bits)))
+case class RdChannel(c:DmaCfg,withSlaveId:Boolean = false) extends  Bundle with IMasterSlave {
+  val rdStream = if (!withSlaveId) Stream(Fragment(Bits(c.dataWidth bits))) else Stream(Fragment(Bits(c.dataWidth + log2Up(c.slaveNode) bits)))
 
   override def asMaster(): Unit = {
     rdStream.asMaster()

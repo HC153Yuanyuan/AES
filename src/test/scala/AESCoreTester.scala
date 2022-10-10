@@ -112,8 +112,8 @@ object BigIntToHexString {
 class AESCoreTester extends AnyFunSuite {
   test("AESCoreStd_128"){
     val flags = VCSFlags(
-      compileFlags = List("-kdb"),
-      elaborateFlags = List("-kdb")
+      compileFlags = List("-kdb","-cm line+fsm+tgl+cond+branch"),
+      elaborateFlags = List("-kdb","-cm line+fsm+tgl+cond+branch")
     )
 
     def initializeIO(dut: CryptoBlockIO): Unit ={
@@ -158,7 +158,7 @@ class AESCoreTester extends AnyFunSuite {
 
     }
 
-    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withFSDBWave.compile(new AES256()).doSim { dut =>
+    SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withCoverage.withFSDBWave.compile(new AES256()).doSim { dut =>
       dut.clockDomain.forkStimulus(10000)
       initializeIO(dut.io)
       dut.clockDomain.waitActiveEdge()

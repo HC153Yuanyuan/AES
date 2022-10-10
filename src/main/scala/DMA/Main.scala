@@ -11,6 +11,6 @@ object Main extends App{
   val dmaCfg = DmaCfg(slaveNode = 8)
   val ahbCfg = AhbLite3Config(addressWidth = dmaCfg.addrWidth,dataWidth = dmaCfg.dataWidth)
 
-  SpinalConfig(targetDirectory = "rtl",oneFilePerComponent = true).generateVerilog(dmaWrapper(dmaCfg,ahbCfg))
+  SpinalConfig(targetDirectory = "rtl",oneFilePerComponent = true).generateVerilog(DmaArbWrapper(dmaCfg))
 }
 

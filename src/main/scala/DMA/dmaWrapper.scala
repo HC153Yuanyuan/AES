@@ -23,6 +23,7 @@ case class dmaWrapper(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
     io.nodeStream(i) <> dmaArb.io.nodeList(i)
     testArb.io.testStream(i) <> io.testStream(i)
   }
+  dmaArb.io.getNextCmd := True
   dma.io.dmaNode <> dmaArb.io.finalNode
   dma.io.ahbBus <> AhbRam.io.ahb
   AhbRam.io.mem <> testArb.io.finalTestStream

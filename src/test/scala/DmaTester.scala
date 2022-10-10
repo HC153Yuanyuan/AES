@@ -55,7 +55,7 @@ case class DmaTester() extends AnyFunSuite {
       var waitFlag = true
       while (waitFlag) {
         clock.waitActiveEdge()
-        if (cmd.rspVld.toBoolean == true) {
+        if (cmd.rspStream.valid.toBoolean == true) {
           waitFlag = false
         }
       }
