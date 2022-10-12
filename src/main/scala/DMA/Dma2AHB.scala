@@ -7,6 +7,7 @@ import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
   val io = new Bundle {
     val ahbAllowMaxBurst = in UInt(5 bits)
+    val busIdle = out Bool()
     val dmaNode = master(DmaNodeInf(c,NodeType.fullVersion))
     val ahbBus =  master(AhbLite3(ahbCfg))
   }
@@ -34,6 +35,8 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
 
   val BusLogic = new Area {
+    val DmaWatchDog = Reg(UInt(8 bits)) init 0
+    val DmaHung = RegInit(False)
     val cmdLatch = RegNextWhen(io.dmaNode.cmd.cmdStream.payload,io.dmaNode.cmd.cmdStream.fire)
     val wrOp = io.dmaNode.cmd.cmdStream.fire ? io.dmaNode.cmd.cmdStream.wrOp | cmdLatch.wrOp
     val transLen = io.dmaNode.cmd.cmdStream.fire ? io.dmaNode.cmd.cmdStream.transLen | cmdLatch.transLen
@@ -44,10 +47,10 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     val fifoAva = wrOp ? io.dmaNode.wrChannel.wrStream.valid | io.dmaNode.rdChannel.rdStream.ready
     val burstStartAddr = startAddr + transCnt * 4
     val lastWord = transCnt >= (transLen -1)
-    val transCntReach = (transCnt >= transLen) || lastCapture
+    val transCntReach = (transCnt >= transLen) || lastCapture || DmaHung
     val lastCapture = RegInit(False)
-    val ahbBurstQuit = (burstStartAddr(9 downto 2) === 0xff) || (ahbBeatCounter >= swConfigMaxBurst - 1) || !fifoAva || lastWord
-    val ahbCanTrans = fifoAva && fsmInWorkState && !transCntReach
+    val ahbBurstQuit = (burstStartAddr(9 downto 2) === 0xff) || (ahbBeatCounter >= swConfigMaxBurst - 1) || !fifoAva || lastWord || DmaHung
+    val ahbCanTrans = fifoAva && fsmInWorkState && !transCntReach && !DmaHung
 
 
     when(fsm.isActive(fsm.ST_IDLE)) {
@@ -70,6 +73,20 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
     when(fsm.isActive((fsm.ST_WORK))) {
       dmaTransDone := wrOp ? (transCntReach && io.ahbBus.fire() && io.ahbBus.HTRANS=/=AhbLite3.BUSY) | (transCntReach && AHBST.isActive(AHBST.ST_IDLE))
+    }
+
+
+    when(AHBST.isActive(AHBST.ST_BUSY)) {
+      DmaWatchDog := DmaWatchDog + 1
+    } otherwise {
+      DmaWatchDog := 0
+    }
+
+    when(DmaWatchDog === 0xff) {
+      DmaHung := True
+      assert(False,"DMA HUNG")
+    } elsewhen(fsm.isActive(fsm.ST_IDLE)) {
+      DmaHung := False
     }
 
     val AHBST = new StateMachine{
@@ -123,7 +140,7 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
       val ST_BUSY:State = new State{
         whenIsActive{
-          when(fifoAva) {
+          when(fifoAva || DmaHung) {
             when(ahbBurstQuit) {
               goto(ST_DATA)
             } otherwise {
@@ -161,5 +178,10 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     io.dmaNode.rsp.rspStream.valid := dmaTransDone
     io.dmaNode.rsp.rspStream.payload.rspCode := 0
     io.dmaNode.rsp.rspStream.payload.id := cmdLatch.id
+
+
+    io.busIdle := fsm.isActive(fsm.ST_IDLE) && AHBST.isActive(AHBST.ST_IDLE)
+
   }
+
 }

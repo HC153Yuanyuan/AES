@@ -8,8 +8,8 @@ import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 case class DmaArbiter(c:DmaCfg) extends Component{
   val io = new Bundle{
     val getNextCmd = in Bool()
-    val nodeList = Vec(master(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
-    val finalNode = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
+    val nodeList = Vec(slave(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
+    val finalNode = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
   }
 
   //set default value
@@ -18,17 +18,37 @@ case class DmaArbiter(c:DmaCfg) extends Component{
   } else {
     io.finalNode.connect(io.nodeList(0),0)
     for (node <- io.nodeList.slice(1 , c.slaveNode)) {
-      node.rsp.rspStream.valid := False
-      node.rsp.rspStream.id := 0
-      node.rsp.rspStream.rspCode := 0
       node.cmd.cmdStream.ready := False
       node.wrChannel.wrStream.ready := False
-      node.rdChannel.rdStream.fragment := 0
-      node.rdChannel.rdStream.last := False
-      node.rdChannel.rdStream.valid := False
-
     }
   }
+
+  for (i <- 0 until  c.slaveNode) {
+    when(i === io.finalNode.rsp.rspStream.id) {
+      io.nodeList(i).rsp.rspStream.valid <> io.finalNode.rsp.rspStream.valid
+      io.nodeList(i).rsp.rspStream.ready <> io.finalNode.rsp.rspStream.ready
+      io.nodeList(i).rsp.rspStream.rspCode <> io.finalNode.rsp.rspStream.rspCode
+    } otherwise {
+      io.nodeList(i).rsp.rspStream.valid := False
+      io.nodeList(i).rsp.rspStream.rspCode := 0
+      io.finalNode.rsp.rspStream.ready := False
+    }
+  }
+
+  for (i <- 0 until c.slaveNode) {
+    when(i === io.finalNode.rdChannel.rdStream.fragment(io.finalNode.rdChannel.rdStream.fragment.getWidth-1 downto 32)) {
+      io.nodeList(i).rdChannel.rdStream.valid <> io.finalNode.rdChannel.rdStream.valid
+      io.nodeList(i).rdChannel.rdStream.last <> io.finalNode.rdChannel.rdStream.last
+      io.nodeList(i).rdChannel.rdStream.ready <> io.finalNode.rdChannel.rdStream.ready
+      io.nodeList(i).rdChannel.rdStream.fragment := io.finalNode.rdChannel.rdStream.fragment(31 downto 0)
+    } otherwise {
+      io.nodeList(i).rdChannel.rdStream.fragment := 0
+      io.nodeList(i).rdChannel.rdStream.last := False
+      io.nodeList(i).rdChannel.rdStream.valid := False
+      io.finalNode.rdChannel.rdStream.ready := False
+    }
+  }
+
 
 
   val maskLocked  = Vec(Reg(Bits(c.slaveNode bits)) init(BigInt(1) << (c.slaveNode - 1)), BigInt(2).pow(c.priWidth).toInt)
@@ -105,8 +125,8 @@ case class DmaArbWrapper(c:DmaCfg) extends Component {
   val io = new Bundle{
     val dmaEnable = in Bool()
     val dmaReady = in Bool()
-    val nodeList = Vec(master(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
-    val finalNode = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
+    val nodeList = Vec(slave(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
+    val finalNode = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
   }
   val arbiter = DmaArbiter(c)
   val ctrl = DmaArbCtrl()

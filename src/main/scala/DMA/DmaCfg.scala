@@ -64,7 +64,7 @@ case class WrChannel(c:DmaCfg,withSlaveId:Boolean = false) extends  Bundle with 
   val wrStream = if (!withSlaveId) Stream(Fragment(Bits(c.dataWidth bits))) else Stream(Fragment(Bits(c.dataWidth + log2Up(c.slaveNode) bits)))
 
   override def asMaster(): Unit = {
-    wrStream.asSlave()
+    wrStream.asMaster()
   }
 }
 

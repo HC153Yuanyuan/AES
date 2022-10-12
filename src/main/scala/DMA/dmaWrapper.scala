@@ -14,7 +14,7 @@ case class dmaWrapper(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
 
   val testArb = testerArb(c,ahbCfg)
   val dmaArb = DmaArbiter(c)
-  val dma =  DmaCtrl(c,ahbCfg)
+  val dma =  null//DmaCtrl(c,ahbCfg)
   val AhbRam = dmaRam(ahbCfg, byteCount= 1 << ahbCfg.addressWidth)
   val ramInitData = (for (i <- 0 until (1 << ahbCfg.addressWidth)/4) yield B(i,ahbCfg.dataWidth bits)).toSeq
   AhbRam.ram.init(ramInitData)
@@ -24,7 +24,7 @@ case class dmaWrapper(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
     testArb.io.testStream(i) <> io.testStream(i)
   }
   dmaArb.io.getNextCmd := True
-  dma.io.dmaNode <> dmaArb.io.finalNode
-  dma.io.ahbBus <> AhbRam.io.ahb
+ // dma.io.dmaNode <> dmaArb.io.finalNode
+  //dma.io.ahbBus <> AhbRam.io.ahb
   AhbRam.io.mem <> testArb.io.finalTestStream
 }
