@@ -11,11 +11,13 @@ object NodeType extends Enumeration{
 
 case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) extends Bundle with IMasterSlave {
   val cmd = CmdChannel(c,withSlaveId)
+  val rsp = RspChannel(c,withSlaveId)
   val wrChannel = if(nodeType != NodeType.readOnly) WrChannel(c,withSlaveId) else null
   val rdChannel = if(nodeType != NodeType.writeOnly) RdChannel(c,withSlaveId) else null
 
   override def asMaster(): Unit = {
     master(cmd,wrChannel,rdChannel)
+    slave(rsp)
   }
 
   def connect(a:DmaNodeInf,slaveId:UInt = 0) = {
@@ -23,9 +25,17 @@ case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) exten
       cmd <> a.cmd
       wrChannel <> a.wrChannel
       rdChannel <> a.rdChannel
+      rsp <> a.rsp
     } else if (withSlaveId == true) {
-      for ((name, element)  <- a.cmd.elements) {
-        val other = cmd.find(name)
+      for ((name, element)  <- a.cmd.cmdStream.elements) {
+        val other = cmd.cmdStream.find(name)
+        if (other != null) {
+          element <> other
+        }
+      }
+
+      for ((name, element)  <- a.rsp.rspStream.elements) {
+        val other = rsp.rspStream.find(name)
         if (other != null) {
           element <> other
         }
@@ -44,10 +54,12 @@ case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) exten
           element <> other
         }
       }
-      if (cmd.id != null) {
-        cmd.id := slaveId.asBits.resize(cmd.id.getWidth)
+
+      if (cmd.cmdStream.id != null) {
+        cmd.cmdStream.id := slaveId.asBits.resize(cmd.cmdStream.id.getWidth)
       }
-      wrChannel.wrStream.fragment := slaveId.asBits.resize(cmd.id.getWidth) ## a.wrChannel.wrStream.fragment
+
+      wrChannel.wrStream.fragment := slaveId.asBits.resize(cmd.cmdStream.id.getWidth) ## a.wrChannel.wrStream.fragment
       wrChannel.wrStream.last <> a.wrChannel.wrStream.last
       a.rdChannel.rdStream.fragment := rdChannel.rdStream.fragment(c.dataWidth-1 downto 0)
       a.rdChannel.rdStream.last <> rdChannel.rdStream.last
@@ -58,6 +70,14 @@ case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) exten
           element <> other
         }
       }
+
+      for ((name, element)  <- a.rsp.rspStream.elements) {
+        val other = rsp.rspStream.find(name)
+        if (other != null) {
+          element <> other
+        }
+      }
+
       for ((name, element)  <- a.wrChannel.wrStream.elements) {
         val other = wrChannel.wrStream.find(name)
         if (other != null && !name.contains("payload")) {
@@ -71,73 +91,22 @@ case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) exten
           element <> other
         }
       }
-      if (a.cmd.id != null) {
-        a.cmd.id := slaveId.asBits.resize(a.cmd.id.getWidth)
+      if (a.cmd.cmdStream.id != null) {
+        a.cmd.cmdStream.id := slaveId.asBits.resize(a.cmd.cmdStream.id.getWidth)
+      }
+
+      if(rsp.rspStream.id != null) {
+        rsp.rspStream.id := slaveId.asBits.resize(a.cmd.cmdStream.id.getWidth)
       }
 
       wrChannel.wrStream.fragment <> a.wrChannel.wrStream.fragment(c.dataWidth-1 downto 0)
       wrChannel.wrStream.last <> a.wrChannel.wrStream.last
-      a.rdChannel.rdStream.fragment <> slaveId.asBits.resize(a.cmd.id.getWidth) ## rdChannel.rdStream.fragment
+      a.rdChannel.rdStream.fragment <> slaveId.asBits.resize(a.cmd.cmdStream.id.getWidth) ## rdChannel.rdStream.fragment
       a.rdChannel.rdStream.last <> rdChannel.rdStream.last
     }
   }
 }
 
-case class DmaArbiter(c:DmaCfg) extends Component{
-  val io = new Bundle{
-    val getNextCmd = in Bool()
-    val nodeList = Vec(master(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
-    val finalNode = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
-  }
-
-  //set default value
-  if (c.slaveNode == 1) {
-    io.finalNode.connect(io.nodeList(0),0)
-  } else {
-    io.finalNode.connect(io.nodeList(0),0)
-    for (node <- io.nodeList.slice(1 , c.slaveNode)) {
-      node.cmd.rspStream.valid := False
-      node.cmd.rspStream.payload := 0
-      node.cmd.reqReady := False
-      node.wrChannel.wrStream.ready := False
-      node.rdChannel.rdStream.fragment := 0
-      node.rdChannel.rdStream.last := False
-      node.rdChannel.rdStream.valid := False
-
-    }
-  }
-
-
-    val maskLocked  = Vec(Reg(Bits(c.slaveNode bits)) init(BigInt(1) << (c.slaveNode - 1)), BigInt(2).pow(c.priWidth).toInt)
-    val maskProposal    = Bits(c.slaveNode bits)
-    // 第一维度优先级，第二维度当前优先级下各slave的请求bitmap
-    val priList:IndexedSeq[Bits] = for (i <- 0 until  BigInt(2).pow(c.priWidth).toInt) yield {
-      (for(node <- io.nodeList) yield ((node.cmd.pri === U(i,c.priWidth bits)) && node.cmd.reqVld)).asBits()
-    }
-
-    // 每个优先级是否有请求
-    val priListBitmap = for (i <- 0 until BigInt(2).pow(c.priWidth).toInt) yield priList(i).asUInt =/= 0
-
-    val (d1Exist,highVldPri) = priListBitmap.sFindFirst(_ === True)
-    val selectPri = d1Exist ? highVldPri|0
-    val selReq = priList(selectPri)
-
-
-    maskProposal := OHMasking.roundRobin(selReq,maskLocked(selectPri)(maskLocked(selectPri).high - 1 downto 0) ## maskLocked(selectPri).msb)
-
-    when(io.getNextCmd) {
-      maskLocked(selectPri) := maskProposal
-    }
-
-    for ((input,requestRouted) <- (io.nodeList,maskProposal.asBools).zipped) {
-        when(requestRouted) {
-          input.connect(io.finalNode,OHToUInt(maskProposal))
-        }
-    }
-
-
-
-}
 
 case class NodeExceptionDetecter(c:DmaCfg) extends Component{
 
@@ -147,10 +116,10 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
   }
 
 
-  val cmdFire = io.node.cmd.reqVld && io.node.cmd.reqReady
+  val cmdFire = io.node.cmd.cmdStream.valid && io.node.cmd.cmdStream.ready
   //exception detect
-  val dirLatch = RegNextWhen(io.node.cmd.wrOp,cmdFire,init = False)
-  val transLenLatch = RegNextWhen(io.node.cmd.transLen,cmdFire)
+  val dirLatch = RegNextWhen(io.node.cmd.cmdStream.wrOp,cmdFire,init = False)
+  val transLenLatch = RegNextWhen(io.node.cmd.cmdStream.transLen,cmdFire)
   val transCnt = Reg(UInt(c.lenWidth bits)) init 0
   val goldenLastFlag = False
   val forceLast = False
@@ -159,13 +128,13 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
   val forceRsp = False
   val forceCode = Bits(c.rspWidth bits)
   val lastUnmatchErr = False
-  val dir = cmdFire ? io.node.cmd.wrOp | dirLatch
+  val dir = cmdFire ? io.node.cmd.cmdStream.wrOp | dirLatch
   val watchDog = UInt(10 bits)
 
-  when((dir && io.nodeOut.wrChannel.wrStream.last) || (!dir && io.node.rdChannel.rdStream.last) || io.node.cmd.rspStream.valid) {
+  when((dir && io.nodeOut.wrChannel.wrStream.last) || (!dir && io.node.rdChannel.rdStream.last) || io.node.rsp.rspStream.valid) {
     transCnt := 0
   } elsewhen(cmdFire) {
-    when(io.node.cmd.wrOp) {
+    when(io.node.cmd.cmdStream.wrOp) {
       when(io.node.wrChannel.wrStream.fire) {
         transCnt := 1
       } otherwise {
@@ -179,7 +148,7 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
       }
     }
   } otherwise {
-    when(io.node.cmd.wrOp) {
+    when(io.node.cmd.cmdStream.wrOp) {
       when(io.node.wrChannel.wrStream.fire) {
         transCnt := transCnt + 1
       }
@@ -192,7 +161,7 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
 
   //gen golden last flag accord translen
   when(cmdFire) {
-    when(io.node.cmd.transLen === 1){
+    when(io.node.cmd.cmdStream.transLen === 1){
       goldenLastFlag := True
     } otherwise {
       goldenLastFlag := False
@@ -220,9 +189,9 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
     }
   }
 
-  io.nodeOut.cmd.rspStream.ready <> io.node.cmd.rspStream.ready
-  io.node.cmd.rspStream.valid := forceRsp | io.nodeOut.cmd.rspStream.valid
-  io.node.cmd.rspStream.payload := forceRsp ? forceCode.asUInt | io.nodeOut.cmd.rspStream.payload
+  io.nodeOut.rsp.rspStream.ready <> io.node.rsp.rspStream.ready
+  io.node.rsp.rspStream.valid := forceRsp | io.nodeOut.rsp.rspStream.valid
+  io.node.rsp.rspStream.payload := forceRsp ? forceCode.asUInt | io.nodeOut.rsp.rspStream.payload
 
   io.nodeOut.wrChannel.wrStream.last := forceLast | io.node.wrChannel.wrStream.last
   io.nodeOut.wrChannel.wrStream.payload <> io.node.wrChannel.wrStream.payload
@@ -283,60 +252,3 @@ case class NodeExceptionDetecter(c:DmaCfg) extends Component{
   }
 }
 
-case class DmaArbCtrl() extends Component {
-  val io = new Bundle {
-    val dmaEnable = in Bool()
-    val dmaReady = in Bool()
-    val cmdFire = in Bool()
-    val getNextCmd = out Bool()
-    val lastDataFired = in Bool()
-  }
-
-  val ctrlST = new StateMachine {
-    val IDLE:State = new State with EntryPoint {
-      whenIsActive {
-        when(io.dmaEnable && io.dmaReady) {
-          goto(WaitFire)
-        }
-      }
-    }
-    val WaitFire:State = new State {
-      whenIsActive{
-        when(io.cmdFire) {
-          goto(
-            WaitDmaDone
-          )
-        }
-      }
-    }
-    val WaitDmaDone:State = new State {
-      whenIsActive {
-        when(io.lastDataFired) {
-          goto(IDLE)
-        }
-      }
-    }
-  }
-
-  io.getNextCmd := ctrlST.isActive(ctrlST.IDLE) && io.dmaEnable && io.dmaReady
-}
-
-
-case class DmaArbWrapper(c:DmaCfg) extends Component {
-  val io = new Bundle{
-    val dmaEnable = in Bool()
-    val dmaReady = in Bool()
-    val nodeList = Vec(master(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
-    val finalNode = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
-  }
-  val arbiter = DmaArbiter(c)
-  val ctrl = DmaArbCtrl()
-  arbiter.io.nodeList <> io.nodeList
-  arbiter.io.finalNode <> io.finalNode
-  arbiter.io.getNextCmd <> ctrl.io.getNextCmd
-  ctrl.io.dmaReady := io.dmaReady
-  ctrl.io.dmaEnable := io.dmaEnable
-  ctrl.io.cmdFire := io.finalNode.cmd.reqVld && io.finalNode.cmd.reqReady
-  ctrl.io.lastDataFired := (io.finalNode.wrChannel.wrStream.last && io.finalNode.wrChannel.wrStream.fire) || (io.finalNode.rdChannel.rdStream.last && io.finalNode.rdChannel.rdStream.fire)
-
-}

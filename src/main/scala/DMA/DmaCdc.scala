@@ -11,24 +11,16 @@ case class DmaCdc(c:DmaCfg,Depth:Int,nodeDomain:ClockDomain,busDomain:ClockDomai
     val nodeOut = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
   }
 
-  val cmdInfo = io.node.cmd.startAddr ## io.node.cmd.wrOp ## io.node.cmd.transLen ## io.node.cmd.pri
-
-
-  val cmdFifo = new StreamFifoCC(cmdInfo,Depth,nodeDomain,busDomain)
-  val rspFifo = new StreamFifoCC(io.node.cmd.rspStream.payload,Depth,busDomain,nodeDomain)
+  val cmdFifo = new StreamFifoCC(io.node.cmd.cmdStream.payload,Depth,nodeDomain,busDomain)
+  val rspFifo = new StreamFifoCC(io.node.rsp.rspStream.payload,Depth,busDomain,nodeDomain)
   val wrFifo = new StreamFifoCC(io.node.wrChannel.wrStream.payload,Depth,busDomain,nodeDomain)
   val rdFifo = new StreamFifoCC(io.node.rdChannel.rdStream.payload,Depth,busDomain,nodeDomain)
 
-  cmdFifo.io.push.payload := cmdInfo
-  cmdFifo.io.push.valid := io.node.cmd.reqVld
-  io.node.cmd.reqReady := cmdFifo.io.push.ready
+  cmdFifo.io.push <> io.node.cmd.cmdStream
+  cmdFifo.io.pop <> io.nodeOut.cmd.cmdStream
 
-  (io.nodeOut.cmd.startAddr ## io.nodeOut.cmd.wrOp ## io.nodeOut.cmd.transLen ## io.nodeOut.cmd.pri).assignFromBits(cmdFifo.io.pop.payload.asBits)
-  io.nodeOut.cmd.reqVld := cmdFifo.io.pop.valid
-  cmdFifo.io.pop.ready := io.nodeOut.cmd.reqReady
-
-  rspFifo.io.push <> io.nodeOut.cmd.rspStream
-  rspFifo.io.pop <> io.node.cmd.rspStream
+  rspFifo.io.push <> io.nodeOut.rsp.rspStream
+  rspFifo.io.pop <> io.node.rsp.rspStream
 
   rdFifo.io.push <> io.nodeOut.rdChannel.rdStream
   rdFifo.io.pop <> io.node.rdChannel.rdStream

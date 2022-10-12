@@ -28,26 +28,33 @@ case class DmaCfg(
   val slaveNode:Int = 2
 )
 
+case class RspInfo(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle {
+  val id = if(withSlaveId) Bits(log2Up(c.slaveNode) bits) else null
+  val rspCode = UInt(c.rspWidth bits)
+}
 
-case class CmdChannel(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle with IMasterSlave {
+case class RspChannel(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle with IMasterSlave {
+  val rspStream = Stream(RspInfo(c,withSlaveId))
+  override def asMaster(): Unit = {
+    rspStream.asMaster()
+  }
+}
+
+case class CmdInfo(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle {
   val id = if(withSlaveId) Bits(log2Up(c.slaveNode) bits) else null
   val startAddr = UInt(c.addrWidth bits)
   val wrOp = Bool()
   val transLen = UInt(c.lenWidth bits)
   val pri = UInt(c.priWidth bits)
-  val reqVld = Bool()
-  val reqReady = Bool()
-  val transCancel = Bool()
+}
 
-  val rspStream = Stream(UInt(c.rspWidth bits))
+
+
+case class CmdChannel(c:DmaCfg,withSlaveId:Boolean = false) extends Bundle with IMasterSlave {
+  val cmdStream = Stream(CmdInfo(c,withSlaveId))
 
   override def asMaster(): Unit = {
-    if (withSlaveId) {
-      in(id)
-    }
-    in(startAddr, wrOp, transLen, pri, reqVld, transCancel)
-    out(reqReady)
-    master(rspStream)
+    cmdStream.asMaster()
   }
 }
 
