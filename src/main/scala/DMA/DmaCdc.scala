@@ -13,7 +13,7 @@ case class DmaCdc(c:DmaCfg,Depth:Int,nodeDomain:ClockDomain,busDomain:ClockDomai
 
   val cmdFifo = new StreamFifoCC(io.node.cmd.cmdStream.payload,Depth,nodeDomain,busDomain)
   val rspFifo = new StreamFifoCC(io.node.rsp.rspStream.payload,Depth,busDomain,nodeDomain)
-  val wrFifo = new StreamFifoCC(io.node.wrChannel.wrStream.payload,Depth,busDomain,nodeDomain)
+  val wrFifo = new StreamFifoCC(io.node.wrChannel.wrStream.payload,Depth,nodeDomain,busDomain)
   val rdFifo = new StreamFifoCC(io.node.rdChannel.rdStream.payload,Depth,busDomain,nodeDomain)
 
   cmdFifo.io.push <> io.node.cmd.cmdStream
