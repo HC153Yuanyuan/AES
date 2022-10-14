@@ -5,7 +5,7 @@ import spinal.lib._
 import spinal.lib.bus.amba3.ahblite.AhbLite3Config
 import spinal.lib.bus.bram.{BRAM, BRAMConfig}
 
-case class testerArb(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
+case class  testerArb(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
   val io = new Bundle {
     val testStream = Vec(slave(BRAM(BRAMConfig(ahbCfg.dataWidth, ahbCfg.addressWidth))),c.slaveNode)
     val finalTestStream = master(BRAM(BRAMConfig(ahbCfg.dataWidth, ahbCfg.addressWidth)))

@@ -6,25 +6,28 @@ import spinal.lib.bus.amba3._
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Config}
 import spinal.lib.bus.bram.{BRAM, BRAMConfig}
 
-case class dmaRam(AhbLite3Config:AhbLite3Config, byteCount: BigInt) extends Component {
+case class dmaRam(AhbLite3Config:AhbLite3Config, byteCount: BigInt,memInfNum:Int) extends Component {
 
   val io = new Bundle {
     val ahb = slave(AhbLite3(AhbLite3Config))
-    val mem = slave(BRAM(BRAMConfig(AhbLite3Config.dataWidth,AhbLite3Config.addressWidth)))
+    val mem = Vec(slave(BRAM(BRAMConfig(AhbLite3Config.dataWidth,AhbLite3Config.addressWidth))),memInfNum)
   }
 
   val wordCount = byteCount / AhbLite3Config.bytePerWord
   val ram       = Mem(AhbLite3Config.dataType, wordCount.toInt)
   val wordRange = log2Up(wordCount) + log2Up(AhbLite3Config.bytePerWord) - 1 downto log2Up(AhbLite3Config.bytePerWord)
 
-  io.mem.rddata := 0
-  when(io.mem.en) {
-    when(io.mem.we =/= 0) {
-      ram.write(io.mem.addr(wordRange),io.mem.wrdata,True,io.mem.we)
-    } otherwise {
-      io.mem.rddata := ram.readSync(io.mem.addr(wordRange))
+  for(memio <- io.mem) {
+    memio.rddata := 0
+    when(memio.en) {
+      when(memio.we =/= 0) {
+        ram.write(memio.addr(wordRange),memio.wrdata,True,memio.we)
+      } otherwise {
+        memio.rddata := ram.readSync(memio.addr(wordRange))
+      }
     }
   }
+
   // Address/control phase to write data phase
   val pendingWrite = Reg(new Bundle{
     val valid   = Bool()
@@ -35,7 +38,7 @@ case class dmaRam(AhbLite3Config:AhbLite3Config, byteCount: BigInt) extends Comp
   pendingWrite.valid init(False)
   pendingWrite.valid := False
 
-  when(io.ahb.HREADY){
+  when(io.ahb.HREADY && io.ahb.HTRANS(1)){
     pendingWrite.valid   := io.ahb.HSEL && io.ahb.HTRANS(1) && io.ahb.HWRITE
     pendingWrite.address := io.ahb.HADDR(wordRange)
     pendingWrite.mask    := io.ahb.writeMask

@@ -53,6 +53,7 @@ case class DmaArbiter(c:DmaCfg) extends Component{
 
   val maskLocked  = Vec(Reg(Bits(c.slaveNode bits)) init(BigInt(1) << (c.slaveNode - 1)), BigInt(2).pow(c.priWidth).toInt)
   val maskProposal    = Bits(c.slaveNode bits)
+  val maskProposalLatch = Reg(Bits(c.slaveNode bits)) init 0
   // 第一维度优先级，第二维度当前优先级下各slave的请求bitmap
   val priList:IndexedSeq[Bits] = for (i <- 0 until  BigInt(2).pow(c.priWidth).toInt) yield {
     (for(node <- io.nodeList) yield ((node.cmd.cmdStream.pri === U(i,c.priWidth bits)) && node.cmd.cmdStream.valid)).asBits()
@@ -64,15 +65,23 @@ case class DmaArbiter(c:DmaCfg) extends Component{
   val (d1Exist,highVldPri) = priListBitmap.sFindFirst(_ === True)
   val selectPri = d1Exist ? highVldPri|0
   val selReq = priList(selectPri)
-
+  val cmdWaiting = RegInit(False)
 
   maskProposal := OHMasking.roundRobin(selReq,maskLocked(selectPri)(maskLocked(selectPri).high - 1 downto 0) ## maskLocked(selectPri).msb)
 
-  when(io.getNextCmd) {
+  when(io.getNextCmd && (maskProposal === 0)) {
+    cmdWaiting := True
+  } elsewhen (maskProposal =/=0 ) {
+    cmdWaiting := False
+  }
+  when((io.getNextCmd || cmdWaiting) && (maskProposal =/=0 ) ) {
+    maskProposalLatch := maskProposal
     maskLocked(selectPri) := maskProposal
+  } elsewhen(io.getNextCmd && (maskProposal === 0)) {
+    maskProposalLatch := 0
   }
 
-  for ((input,requestRouted) <- (io.nodeList,maskProposal.asBools).zipped) {
+  for ((input,requestRouted) <- (io.nodeList,maskProposalLatch.asBools).zipped) {
     when(requestRouted) {
       input.connect(io.finalNode,OHToUInt(maskProposal))
     }

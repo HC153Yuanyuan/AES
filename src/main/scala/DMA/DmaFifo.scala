@@ -8,10 +8,10 @@ case class DmaFifo(c:DmaCfg,CmdDepth:Int,DataDepth:Int,withSlaveId:Boolean) exte
     val nodeOut = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId))
   }
 
-  val cmdFifo = new StreamFifo(io.node.cmd.cmdStream.payload,CmdDepth)
-  val rspFifo = new StreamFifo(io.node.rsp.rspStream.payload,CmdDepth)
-  val wrFifo = new StreamFifo(io.node.wrChannel.wrStream.payload,DataDepth)
-  val rdFifo = new StreamFifo(io.node.rdChannel.rdStream.payload,DataDepth)
+  val cmdFifo = new StreamFifoLowLatency(io.node.cmd.cmdStream.payload,CmdDepth)
+  val rspFifo = new StreamFifoLowLatency(io.node.rsp.rspStream.payload,CmdDepth)
+  val wrFifo = new StreamFifoLowLatency(io.node.wrChannel.wrStream.payload,DataDepth)
+  val rdFifo = new StreamFifoLowLatency(io.node.rdChannel.rdStream.payload,DataDepth)
 
   cmdFifo.io.push <> io.node.cmd.cmdStream
   cmdFifo.io.pop <> io.nodeOut.cmd.cmdStream
