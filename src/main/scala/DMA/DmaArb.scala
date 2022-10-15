@@ -23,20 +23,23 @@ case class DmaArbiter(c:DmaCfg) extends Component{
     }
   }
 
+
+  io.finalNode.rsp.rspStream.ready := False
   for (i <- 0 until  c.slaveNode) {
-    when(i === io.finalNode.rsp.rspStream.id) {
+    when(B(i,log2Up(c.slaveNode) bits) === io.finalNode.rsp.rspStream.payload.id) {
       io.nodeList(i).rsp.rspStream.valid <> io.finalNode.rsp.rspStream.valid
-      io.nodeList(i).rsp.rspStream.ready <> io.finalNode.rsp.rspStream.ready
       io.nodeList(i).rsp.rspStream.rspCode <> io.finalNode.rsp.rspStream.rspCode
+      io.finalNode.rsp.rspStream.ready := io.nodeList(i).rsp.rspStream.ready
     } otherwise {
       io.nodeList(i).rsp.rspStream.valid := False
       io.nodeList(i).rsp.rspStream.rspCode := 0
-      io.finalNode.rsp.rspStream.ready := False
     }
   }
 
+
+  io.finalNode.rdChannel.rdStream.ready := False
   for (i <- 0 until c.slaveNode) {
-    when(i === io.finalNode.rdChannel.rdStream.fragment(io.finalNode.rdChannel.rdStream.fragment.getWidth-1 downto 32)) {
+    when(B(i,log2Up(c.slaveNode) bits) === io.finalNode.rdChannel.rdStream.fragment(io.finalNode.rdChannel.rdStream.fragment.getWidth-1 downto 32)) {
       io.nodeList(i).rdChannel.rdStream.valid <> io.finalNode.rdChannel.rdStream.valid
       io.nodeList(i).rdChannel.rdStream.last <> io.finalNode.rdChannel.rdStream.last
       io.nodeList(i).rdChannel.rdStream.ready <> io.finalNode.rdChannel.rdStream.ready
@@ -45,7 +48,6 @@ case class DmaArbiter(c:DmaCfg) extends Component{
       io.nodeList(i).rdChannel.rdStream.fragment := 0
       io.nodeList(i).rdChannel.rdStream.last := False
       io.nodeList(i).rdChannel.rdStream.valid := False
-      io.finalNode.rdChannel.rdStream.ready := False
     }
   }
 
@@ -83,7 +85,7 @@ case class DmaArbiter(c:DmaCfg) extends Component{
 
   for ((input,requestRouted) <- (io.nodeList,maskProposalLatch.asBools).zipped) {
     when(requestRouted) {
-      input.connect(io.finalNode,OHToUInt(maskProposal))
+      input.connect(io.finalNode,OHToUInt(maskProposalLatch))
     }
   }
 
@@ -104,7 +106,11 @@ case class DmaArbCtrl() extends Component {
     val IDLE:State = new State with EntryPoint {
       whenIsActive {
         when(io.dmaEnable && io.dmaReady) {
-          goto(WaitFire)
+          when(io.cmdFire) {
+            goto(WaitDmaDone)
+          } otherwise {
+            goto(WaitFire)
+          }
         }
       }
     }

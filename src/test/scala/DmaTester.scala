@@ -59,6 +59,13 @@ object DmaTester {
       }
       dma.wrChannel.wrStream.valid #= false
       dma.wrChannel.wrStream.last #= false
+      timeout = 0
+      while (!dma.rsp.rspStream.valid.toBoolean) {
+        clock.waitSampling()
+        timeout = timeout + 1
+        if (timeout > 500)
+          simFailure("wait rspStream valid timeout!")
+      }
     }
 
     def driveRdData(dma:DmaNodeInf,len:Int,clock:ClockDomain):List[Long] = {
@@ -90,13 +97,13 @@ object DmaTester {
 
     def readTestData(ram:BRAM,startAddr:Long,len:Int,clock:ClockDomain):List[Long] = {
       val data = ArrayBuffer[Long]()
-      clock.waitActiveEdge()
+      clock.waitSampling(1)
       for (rdCnt <- 0 until len) {
         ram.en #= true
         ram.we #= 0
         ram.addr #= startAddr + rdCnt*4
         ram.wrdata #= 0
-        clock.waitSampling(2)
+        clock.waitSampling(1)
         data.append(ram.rddata.toLong)
       }
       ram.en #= false
@@ -131,7 +138,7 @@ object DmaTester {
         elaborateFlags = List("-kdb")
       )
 
-      SimConfig.withConfig(SpinalConfig(inlineRom = true)).withWave.doSimUntilVoid(new TestWrapper(dmaCfg,ahbCfg),"xxx") { dut =>
+      SimConfig.withConfig(SpinalConfig(inlineRom = true)).withWave.doSimUntilVoid(new TestWrapper(dmaCfg,ahbCfg),"xxx",seed = 74779957) { dut =>
       val busDomain = ClockDomain(
         clock = dut.io.sysBusClk,
         reset = dut.io.sysBusRst,
@@ -149,8 +156,8 @@ object DmaTester {
           resetActiveLevel = LOW)
       )
 
-      nodeDomain.forkStimulus(1250 )
-      busDomain.forkStimulus(2500)
+      nodeDomain.forkStimulus(12500 )
+      busDomain.forkStimulus(25000)
 
       for (node <- dut.io.nodeStream) {
         ioInit(node)
@@ -167,6 +174,7 @@ object DmaTester {
       nodeDomain.waitSampling(10)
       dut.io.dmaEnable #= true
 
+
       val threadPoll = for (i <- 0 until dmaCfg.slaveNode) yield fork {
         if (i == 0) {
           setCmd(dut.io.nodeStream(i).cmd,true,0,20,nodeDomain)
@@ -176,9 +184,26 @@ object DmaTester {
         val wrData = for (start <- 0 until 20) yield {start+i*20}
         driveWrData(dut.io.nodeStream(i),wrData.toList,nodeDomain)
         val rdData = readTestData(dut.io.testStream(i),i*80,20,busDomain)
-        println("index " + i +",\t",rdData)
+        if(rdData != wrData.toList) {
+          println("index " + i +",\t",rdData)
+          simFailure("index"+i+"wr check fail")
+        }
+      //  val wrData2 = for (start <- 0 until 20) yield {start+i*20+10}
+      //  writeTestData(dut.io.testStream(i),i*80,wrData2.toList,busDomain)
+      //  val rdData2 = readTestData(dut.io.testStream(i),i*80,20,busDomain)
+      //  println("index " + i +",\t",rdData2)
+
       }
 
+        fork {
+          while(true) {
+            dut.busArea.AhbRam.forceReadyDown.randomize()
+            busDomain.waitSampling(
+
+            )
+          }
+
+        }
 
       fork {
         nodeDomain.waitSampling(200000)

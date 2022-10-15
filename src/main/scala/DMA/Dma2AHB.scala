@@ -170,7 +170,7 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     io.ahbBus.HSIZE := B"010"
     io.ahbBus.HMASTLOCK := False
     io.ahbBus.HPROT := B"0000"
-    io.ahbBus.HWDATA := wrOp ? (io.dmaNode.wrChannel.wrStream.fire ? io.dmaNode.wrChannel.wrStream.fragment(31 downto 0) | RegNext(io.ahbBus.HWDATA) ) | 0
+    io.ahbBus.HWDATA := wrOp ? io.dmaNode.wrChannel.wrStream.fragment(31 downto 0) | 0
 
 
     io.dmaNode.wrChannel.wrStream.ready := wrOp && io.ahbBus.fire() && ( AHBST.isActive(AHBST.ST_DATA_ADDR) ||  AHBST.isActive(AHBST.ST_DATA) )
