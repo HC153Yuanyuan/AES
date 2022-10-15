@@ -88,9 +88,6 @@ case class DmaArbiter(c:DmaCfg) extends Component{
       input.connect(io.finalNode,OHToUInt(maskProposalLatch))
     }
   }
-
-
-
 }
 
 case class DmaArbCtrl() extends Component {
