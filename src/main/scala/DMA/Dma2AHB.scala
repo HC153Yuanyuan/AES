@@ -7,6 +7,7 @@ import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
   val io = new Bundle {
     val ahbAllowMaxBurst = in UInt(5 bits)
+    val rdDataFifoAlmstFull = in Bool()
     val busIdle = out Bool()
     val dmaNode = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
     val ahbBus =  master(AhbLite3(ahbCfg))
@@ -37,6 +38,7 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
   val BusLogic = new Area {
     val DmaWatchDog = Reg(UInt(8 bits)) init 0
     val DmaHung = RegInit(False)
+    val DmaWrLastFail = False
     val cmdLatch = RegNextWhen(io.dmaNode.cmd.cmdStream.payload,io.dmaNode.cmd.cmdStream.fire)
     val wrOp = io.dmaNode.cmd.cmdStream.fire ? io.dmaNode.cmd.cmdStream.wrOp | cmdLatch.wrOp
     val transLen = io.dmaNode.cmd.cmdStream.fire ? io.dmaNode.cmd.cmdStream.transLen | cmdLatch.transLen
@@ -44,23 +46,30 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     val transCnt = Reg(UInt(c.lenWidth bits)) init 0
     val ahbBeatCounter = Reg(UInt(5 bits)) init 0
     val swConfigMaxBurst = RegNextWhen(io.ahbAllowMaxBurst,io.ahbBus.HTRANS === AhbLite3.IDLE)
-    val fifoAva = wrOp ? io.dmaNode.wrChannel.wrStream.valid | io.dmaNode.rdChannel.rdStream.ready
+    val fifoAva = wrOp ? io.dmaNode.wrChannel.wrStream.valid | !io.rdDataFifoAlmstFull
     val burstStartAddr = startAddr + transCnt * 4
     val lastWord = transCnt >= (transLen -1)
     val lastCapture = RegInit(False)
-    val transCntReach = (transCnt >= transLen) || lastCapture || DmaHung
-    val ahbBurstQuit = (burstStartAddr(9 downto 2) === 0xff) || (ahbBeatCounter >= swConfigMaxBurst - 1) || !fifoAva || lastWord || DmaHung
-    val ahbCanTrans = fifoAva && fsmInWorkState && !transCntReach && !DmaHung
+    val transCntReach = (transCnt >= transLen) || lastCapture || DmaHung || DmaWrLastFail
+    val ahbBurstQuit = (burstStartAddr(9 downto 2) === 0xff) || (ahbBeatCounter >= swConfigMaxBurst - 1) || !fifoAva || lastWord || DmaHung || DmaWrLastFail
+    val ahbCanTrans = fifoAva && fsmInWorkState && !transCntReach && !DmaHung && !DmaWrLastFail
 
 
 
 
+  when(io.dmaNode.wrChannel.wrStream.fire && io.dmaNode.wrChannel.wrStream.last && !lastWord) {
+    DmaWrLastFail := True
+   // assert(False,"DMA Wr Last Fail")
+  } elsewhen(fsm.isActive(fsm.ST_IDLE)) {
+    DmaWrLastFail := False
+  } otherwise {
+    DmaWrLastFail := RegNext(DmaWrLastFail) init False
+  }
 
 
-
-    when(DmaWatchDog === 0xff) {
+    when(DmaWatchDog === 100) {
       DmaHung := True
-      assert(False,"DMA HUNG")
+     // assert(False,"DMA HUNG")
     } elsewhen(fsm.isActive(fsm.ST_IDLE)) {
       DmaHung := False
     }
@@ -116,7 +125,7 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
 
       val ST_BUSY:State = new State{
         whenIsActive{
-          when(fifoAva || DmaHung) {
+          when(fifoAva || DmaHung ) {
             when(ahbBurstQuit) {
               goto(ST_DATA)
             } otherwise {
@@ -137,7 +146,7 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
       transCnt := 0
       lastCapture := False
     } otherwise {
-      when(io.ahbBus.fire() && (AHBST.isActive(AHBST.ST_ADDR) || AHBST.isActive(AHBST.ST_DATA_ADDR))) {
+      when(io.ahbBus.fire() && (io.ahbBus.HTRANS(1))) {
         transCnt := transCnt + 1
       }
       when(wrOp) {
@@ -152,16 +161,16 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     }
 
     when(fsm.isActive((fsm.ST_WORK))) {
-      dmaTransDone := wrOp ? (transCntReach && io.ahbBus.fire() && io.ahbBus.HTRANS=/=AhbLite3.BUSY) | (transCntReach && AHBST.isActive(AHBST.ST_IDLE))
+      dmaTransDone := wrOp ? (transCntReach && io.ahbBus.fire() && io.ahbBus.HTRANS=/=AhbLite3.BUSY && AHBST.isEntering(AHBST.ST_IDLE)) | (transCntReach && AHBST.isActive(AHBST.ST_IDLE))
     }
 
 
 
 
     io.ahbBus.HSEL := fsm.isActive(fsm.ST_WORK)
-    io.ahbBus.HTRANS := AHBST.isActive(AHBST.ST_ADDR) ? B"10"|
-                        ( AHBST.isActive(AHBST.ST_DATA_ADDR) ? B"11" |
-                        ( AHBST.isActive(AHBST.ST_BUSY) ? B"01" | B"00"))
+    io.ahbBus.HTRANS := (AHBST.isActive(AHBST.ST_ADDR)) ? B"10"|
+                        (( AHBST.isActive(AHBST.ST_DATA_ADDR)) ? B"11" |
+                        ((AHBST.isActive(AHBST.ST_BUSY)) ? B"01" | B"00"))
 
     io.ahbBus.HADDR := burstStartAddr
     io.ahbBus.HWRITE := wrOp
@@ -170,14 +179,14 @@ case class Dma2AHB(c:DmaCfg,ahbCfg:AhbLite3Config) extends Component {
     io.ahbBus.HSIZE := B"010"
     io.ahbBus.HMASTLOCK := False
     io.ahbBus.HPROT := B"0000"
-    io.ahbBus.HWDATA := wrOp ? io.dmaNode.wrChannel.wrStream.fragment(31 downto 0) | 0
+    io.ahbBus.HWDATA := wrOp ? RegNextWhen(io.dmaNode.wrChannel.wrStream.fragment(31 downto 0),io.dmaNode.wrChannel.wrStream.fire) | 0
 
 
-    io.dmaNode.wrChannel.wrStream.ready := wrOp && io.ahbBus.fire() && ( AHBST.isActive(AHBST.ST_DATA_ADDR) ||  AHBST.isActive(AHBST.ST_DATA) )
+    io.dmaNode.wrChannel.wrStream.ready := wrOp && ((io.ahbBus.fire() && ( AHBST.isActive(AHBST.ST_DATA_ADDR) ||  AHBST.isActive(AHBST.ST_ADDR))) ||  (AHBST.isActive(AHBST.ST_BUSY)))
 
-    io.dmaNode.rdChannel.rdStream.valid := !wrOp && io.ahbBus.fire() && ( AHBST.isActive(AHBST.ST_DATA_ADDR) ||  AHBST.isActive(AHBST.ST_DATA) )
+    io.dmaNode.rdChannel.rdStream.valid := !wrOp && (io.ahbBus.fire() && ( AHBST.isActive(AHBST.ST_DATA_ADDR) ||  AHBST.isActive(AHBST.ST_DATA)) )
     io.dmaNode.rdChannel.rdStream.last := transCntReach
-    io.dmaNode.rdChannel.rdStream.fragment := cmdLatch.id ## io.ahbBus.HRDATA
+    io.dmaNode.rdChannel.rdStream.fragment := (cmdLatch.id ## io.ahbBus.HRDATA)
 
     io.dmaNode.cmd.cmdStream.ready := fsm.isActive(fsm.ST_IDLE)
 

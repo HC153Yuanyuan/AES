@@ -5,7 +5,7 @@ import spinal.lib._
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Config}
 import spinal.lib.bus.bram.{BRAM, BRAMConfig}
 
-case class DmaTop(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
+case class DmaTop(c:DmaCfg, ahbCfg:AhbLite3Config, withRdErrDect:Boolean = true) extends Component {
   val io = new Bundle {
     val nodeStream = Vec(slave(DmaNodeInf(c,NodeType.fullVersion)),c.slaveNode)
     val sysBusClk = in Bool()
@@ -39,7 +39,25 @@ case class DmaTop(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
     val dmaArb = DmaArbWrapper(c)
     val dmaFifo = DmaFifo(c,4,8,true)
 
-    dmaArb.io.nodeList <> io.nodeStream
+    dmaArb.io.dmaHungThreshold := 500
+    if (withRdErrDect) {
+      for (i <- 0 until c.slaveNode) {
+        val nodeWithRdErrDect = NodeRdExceptionDetecter(c,false)
+        nodeWithRdErrDect.io.timeOutThreshold := 100
+        nodeWithRdErrDect.io.nodeOut <> io.nodeStream(i).rdChannel
+        dmaArb.io.nodeList(i).rdChannel <> nodeWithRdErrDect.io.node
+
+        for ((name, element)  <- io.nodeStream(i).elements) {
+          val other = dmaArb.io.nodeList(i).find(name)
+          if ((other != null) && !name.contains("rdChannel")) {
+            element <> other
+          }
+        }
+      }
+    } else {
+      dmaArb.io.nodeList <> io.nodeStream
+    }
+
     dmaArb.io.finalNode <> dmaFifo.io.node
     dmaArb.io.dmaEnable := io.dmaEnable
     dmaArb.io.dmaReady := dmaFifo.io.node.cmd.cmdStream.ready
@@ -51,6 +69,7 @@ case class DmaTop(c:DmaCfg, ahbCfg:AhbLite3Config) extends Component {
     dma2ahb.io.dmaNode <> dmaFifo.io.nodeOut
     dma2ahb.io.ahbBus <> io.ahbBus
     dma2ahb.io.ahbAllowMaxBurst := 16
+    dma2ahb.io.rdDataFifoAlmstFull := dmaFifo.io.rdDataFifoAlmostFull
   }
 
   val dmaCdc = DmaCdc(c,4,nodeDomain, busDomain)

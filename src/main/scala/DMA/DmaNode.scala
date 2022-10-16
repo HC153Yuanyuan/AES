@@ -82,11 +82,11 @@ case class DmaNodeInf(c:DmaCfg, nodeType:Int, withSlaveId:Boolean = false) exten
 case class NodeRdExceptionDetecter(c:DmaCfg,withSlaveId:Boolean = true) extends Component{
   val io = new Bundle{
     val timeOutThreshold = in (UInt(10 bits))
-    val node = master(RdChannel(c,withSlaveId))
-    val nodeOut = slave(RdChannel(c,withSlaveId))
+    val node = slave(RdChannel(c,withSlaveId))
+    val nodeOut = master(RdChannel(c,withSlaveId))
   }
 
-  val watchDog = UInt(10 bits)
+  val watchDog = Reg(UInt(10 bits)) init 0
   val timeout = watchDog === io.timeOutThreshold
   when(io.node.rdStream.fire) {
     watchDog := 0
@@ -95,8 +95,8 @@ case class NodeRdExceptionDetecter(c:DmaCfg,withSlaveId:Boolean = true) extends 
   }
 
   io.node.rdStream.valid <> io.nodeOut.rdStream.valid
+  io.node.rdStream.last <> io.nodeOut.rdStream.last
   io.node.rdStream.ready := io.nodeOut.rdStream.ready | timeout
   io.node.rdStream.payload <>  io.nodeOut.rdStream.payload
 }
-
 

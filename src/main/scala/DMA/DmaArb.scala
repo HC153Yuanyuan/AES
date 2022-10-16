@@ -16,8 +16,14 @@ case class DmaArbiter(c:DmaCfg) extends Component{
   if (c.slaveNode == 1) {
     io.finalNode.connect(io.nodeList(0),0)
   } else {
-    io.finalNode.connect(io.nodeList(0),0)
-    for (node <- io.nodeList.slice(1 , c.slaveNode)) {
+   // io.finalNode.connect(io.nodeList(0),0)
+    io.finalNode.cmd.cmdStream.valid := False
+    io.finalNode.cmd.cmdStream.payload.assignFromBits(B(0,io.finalNode.cmd.cmdStream.payload.getBitsWidth bits))
+    io.finalNode.wrChannel.wrStream.payload.assignFromBits(B(0,io.finalNode.wrChannel.wrStream.payload.getBitsWidth bits))
+
+    io.finalNode.wrChannel.wrStream.valid := False
+
+    for (node <- io.nodeList.slice(0 , c.slaveNode)) {
       node.cmd.cmdStream.ready := False
       node.wrChannel.wrStream.ready := False
     }
@@ -97,7 +103,11 @@ case class DmaArbCtrl() extends Component {
     val cmdFire = in Bool()
     val getNextCmd = out Bool()
     val lastDataFired = in Bool()
+    val dmaHungThreshold = in UInt(10 bits)
   }
+
+  val dmaHungCnt = Reg(UInt(io.dmaHungThreshold.getWidth bits)) init 0
+  val dmaHungOccur = dmaHungCnt === io.dmaHungThreshold
 
   val ctrlST = new StateMachine {
     val IDLE:State = new State with EntryPoint {
@@ -122,13 +132,18 @@ case class DmaArbCtrl() extends Component {
     }
     val WaitDmaDone:State = new State {
       whenIsActive {
-        when(io.lastDataFired) {
+        when(io.lastDataFired || dmaHungOccur) {
           goto(IDLE)
         }
       }
     }
   }
 
+  when(ctrlST.isActive(ctrlST.WaitDmaDone)) {
+    dmaHungCnt := dmaHungCnt + 1
+  } otherwise {
+    dmaHungCnt := 0
+  }
   io.getNextCmd := ctrlST.isActive(ctrlST.IDLE) && io.dmaEnable && io.dmaReady
 }
 
@@ -139,6 +154,7 @@ case class DmaArbWrapper(c:DmaCfg) extends Component {
     val dmaReady = in Bool()
     val nodeList = Vec(slave(DmaNodeInf(c,NodeType.fullVersion)), c.slaveNode )
     val finalNode = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId = true))
+    val dmaHungThreshold = in UInt(10 bits)
   }
   val arbiter = DmaArbiter(c)
   val ctrl = DmaArbCtrl()
@@ -149,6 +165,7 @@ case class DmaArbWrapper(c:DmaCfg) extends Component {
   ctrl.io.dmaReady := io.dmaReady
   ctrl.io.dmaEnable := io.dmaEnable
   ctrl.io.cmdFire := io.finalNode.cmd.cmdStream.fire
+  ctrl.io.dmaHungThreshold := io.dmaHungThreshold
 
 
   ctrl.io.lastDataFired := wrOp ? (io.finalNode.wrChannel.wrStream.last && io.finalNode.wrChannel.wrStream.fire) | True

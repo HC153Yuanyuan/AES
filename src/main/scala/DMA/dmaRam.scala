@@ -37,7 +37,7 @@ case class dmaRam(AhbLite3Config:AhbLite3Config, byteCount: BigInt,memInfNum:Int
   })
 
   pendingWrite.valid init(False)
-  pendingWrite.valid := False
+  pendingWrite.valid :=  (io.ahb.HTRANS =/= AhbLite3.BUSY) ? False | pendingWrite.valid
 
   when(io.ahb.HREADY && io.ahb.HTRANS(1)){
     pendingWrite.valid   := io.ahb.HSEL && io.ahb.HTRANS(1) && io.ahb.HWRITE
@@ -55,12 +55,12 @@ case class dmaRam(AhbLite3Config:AhbLite3Config, byteCount: BigInt,memInfNum:Int
   )
 
   ram.write(
-    enable  = pendingWrite.valid,
+    enable  = pendingWrite.valid && (io.ahb.HTRANS =/= AhbLite3.BUSY),
     address = pendingWrite.address,
     mask    = pendingWrite.mask,
     data    = io.ahb.HWDATA
   )
   when(pendingWrite.valid){
-    report(Seq("write addr is\t", pendingWrite.address, "\twrite data is\t" , io.ahb.HWDATA))
+    //report(Seq("write addr is\t", pendingWrite.address, "\twrite data is\t" , io.ahb.HWDATA))
   }
 }

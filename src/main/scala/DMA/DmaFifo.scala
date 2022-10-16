@@ -1,11 +1,13 @@
 package DMA
 
 import spinal.core._
+import spinal.core.internals.Operator
 import spinal.lib._
 case class DmaFifo(c:DmaCfg,CmdDepth:Int,DataDepth:Int,withSlaveId:Boolean) extends Component {
   val io = new Bundle {
     val node = slave(DmaNodeInf(c,NodeType.fullVersion,withSlaveId))
     val nodeOut = master(DmaNodeInf(c,NodeType.fullVersion,withSlaveId))
+    val rdDataFifoAlmostFull = out Bool()
   }
 
   val cmdFifo = new StreamFifoLowLatency(io.node.cmd.cmdStream.payload,CmdDepth)
@@ -24,5 +26,7 @@ case class DmaFifo(c:DmaCfg,CmdDepth:Int,DataDepth:Int,withSlaveId:Boolean) exte
 
   wrFifo.io.push <> io.node.wrChannel.wrStream
   wrFifo.io.pop <> io.nodeOut.wrChannel.wrStream
+
+  io.rdDataFifoAlmostFull := (U(DataDepth, rdFifo.io.pushOccupancy.getWidth bits) - rdFifo.io.pushOccupancy) <= 1
 
 }

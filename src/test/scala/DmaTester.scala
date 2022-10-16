@@ -58,18 +58,18 @@ object DmaDriver{
     dma.wrChannel.wrStream.valid #= false
     dma.wrChannel.wrStream.last #= false
 
-    val timeoutThreshold = if(abortCase)  5000 else 500
+    val timeoutThreshold = if(abortCase)  10000 else 500
 
     timeout = 0
     while (!dma.rsp.rspStream.valid.toBoolean) {
       clock.waitSampling()
       timeout = timeout + 1
       if (timeout > timeoutThreshold)
-        simFailure("wait rspStream valid timeout!")
+        simFailure("wr wait rspStream valid timeout!")
     }
   }
 
-  def driveRdData(dma:DmaNodeInf,len:Int,clock:ClockDomain):List[Long] = {
+  def driveRdData(dma:DmaNodeInf,len:Int,clock:ClockDomain,checkLast:Boolean = true,abortCase:Boolean = false):List[Long] = {
     val data = ArrayBuffer[Long]()
     var timeout = 0
     var count = 0
@@ -86,7 +86,8 @@ object DmaDriver{
         }
         data.append(dma.rdChannel.rdStream.payload.fragment.toLong)
         if((count == (len - 1)) ^ dma.rdChannel.rdStream.last.toBoolean) {
-          simFailure("RD last flag check fail!")
+          if (checkLast)
+            simFailure("RD last flag check fail!")
         }
         count = count + 1
       }
@@ -121,21 +122,22 @@ object DmaDriver{
       clock.waitSampling()
     }
     ram.en #= false
+    ram.we #= 0x0
   }
 
-  def writeOp(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain) = {
+  def writeOp(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain,withAbort:Boolean = false) = {
     setCmd(dut.cmd,true,startAddr.toInt,data.size,nodeClock)
-    driveWrData(dut, data, nodeClock);
+    driveWrData(dut, data, nodeClock,abortCase = withAbort);
     val actualData = readTestData(ram,startAddr, data.size,busClock)
     if(actualData != data) {
       simFailure("wr data check fail: " + "ref is " + data + "\nactual is: " + actualData)
     }
   }
 
-  def readOp(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain) = {
+  def readOp(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain,withAbort:Boolean = false) = {
     writeTestData(ram,startAddr, data, busClock)
     setCmd(dut.cmd,false,startAddr.toInt,data.size,nodeClock)
-    val actualData = driveRdData(dut,data.size,nodeClock)
+    val actualData = driveRdData(dut,data.size,nodeClock,abortCase = withAbort)
     if(actualData != data) {
       simFailure("rd data check fail: " + "ref is " + data + "\nactual is: " + actualData)
     }
@@ -144,7 +146,15 @@ object DmaDriver{
   def writeAbort(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain) = {
     setCmd(dut.cmd,true,startAddr.toInt,data.size,nodeClock)
     val actualDataSize = util.Random.nextInt(data.size + 1)
-    driveWrData(dut, data.slice(0,actualDataSize), nodeClock)
+    val withLast = util.Random.nextInt() % 2 == 0
+    driveWrData(dut, data.slice(0,actualDataSize), nodeClock,withLast,true)
+  }
+
+  def readAbort(dut:DmaNodeInf,ram: BRAM, startAddr:Long,data:List[Int],nodeClock:ClockDomain,busClock:ClockDomain) = {
+    val actualDataSize = util.Random.nextInt(data.size + 1)
+    setCmd(dut.cmd,false,startAddr.toInt,data.size,nodeClock)
+    val actualData = driveRdData(dut,actualDataSize,nodeClock,false,true)
+    busClock.waitSampling(1000)
   }
 }
 
@@ -161,6 +171,7 @@ object DmaTester {
 
       inf.rdChannel.rdStream.ready #= false
       inf.wrChannel.wrStream.valid #= false
+      inf.wrChannel.wrStream.last #= false
     }
 
 
@@ -171,7 +182,7 @@ object DmaTester {
         elaborateFlags = List("-kdb")
       )
 
-      SimConfig.withConfig(SpinalConfig(inlineRom = true)).withWave.doSimUntilVoid(new TestWrapper(dmaCfg,ahbCfg),"xxx",seed = 74779957) { dut =>
+      SimConfig.withConfig(SpinalConfig(inlineRom = true)).withVCS(flags).withWave.doSimUntilVoid(new TestWrapper(dmaCfg,ahbCfg),"xxx") { dut =>
       val busDomain = ClockDomain(
         clock = dut.io.sysBusClk,
         reset = dut.io.sysBusRst,
@@ -209,28 +220,37 @@ object DmaTester {
 
 
       val threadPoll = for (i <- 0 until dmaCfg.slaveNode) yield fork {
-        val wrData = for (start <- 0 until 20) yield {start+i*20}
-        val rdData = for (start <- 0 until 20) yield {start+i*20 + 100}
-        DmaDriver.writeOp(dut.io.nodeStream(i),dut.io.testStream(i),i*80,wrData.toList,nodeDomain,busDomain)
-        DmaDriver.readOp(dut.io.nodeStream(i),dut.io.testStream(i),i*80,rdData.toList,nodeDomain,busDomain)
-        DmaDriver.writeOp(dut.io.nodeStream(i),dut.io.testStream(i),i*80,wrData.toList,nodeDomain,busDomain)
-        DmaDriver.readOp(dut.io.nodeStream(i),dut.io.testStream(i),i*80,rdData.toList,nodeDomain,busDomain)
-      }
+        var withAbort = false
+        for( round <- 0 until 1)  {
+          val caseType = util.Random.nextInt() % 4
+          val testLen = util.Random.nextInt(31) + 1
+          val testData = (0 until testLen).toList.map(_+round*65536)
 
-        fork {
-          while(true) {
-            dut.busArea.AhbRam.forceReadyDown.randomize()
-            busDomain.waitSampling(
-
-            )
+          if (caseType < 2) {
+            withAbort = true
           }
 
+          if (caseType == 0) {
+            DmaDriver.writeAbort(dut.io.nodeStream(i), dut.io.testStream(i), i * 32 * 4, testData, nodeDomain, busDomain)
+          } else if (caseType== 1) {
+            DmaDriver.readAbort(dut.io.nodeStream(i), dut.io.testStream(i), i *  32 * 4, testData, nodeDomain, busDomain)
+          } else if (caseType == 2) {
+            DmaDriver.writeOp(dut.io.nodeStream(i), dut.io.testStream(i), i * 32 * 4, testData, nodeDomain, busDomain,withAbort = withAbort)
+          } else {
+            DmaDriver.readOp(dut.io.nodeStream(i), dut.io.testStream(i), i *  32 * 4, testData, nodeDomain, busDomain,withAbort = withAbort)
+          }
         }
+      }
 
       fork {
-        nodeDomain.waitSampling(400000)
-        simSuccess()
+        while(true) {
+          dut.busArea.AhbRam.forceReadyDown.randomize()
+          busDomain.waitSampling()
+        }
       }
+
+      threadPoll.map(_.join())
+      simSuccess()
 
     }
   }
